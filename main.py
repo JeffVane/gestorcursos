@@ -4085,7 +4085,7 @@ VERSION_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRAN
 LOCAL_VERSION_FILE = "version.txt"
 
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
-INSTALLER_ASSET_NAME = "GestaoDeCursos_Setup.exe"
+INSTALLER_ASSET_PREFIX = "GestaoDeCursos_Setup"
 # --------------------------------------------------------------
 
 
@@ -4118,9 +4118,9 @@ def get_latest_installer_url():
     r.raise_for_status()
     data = r.json()
     for a in data.get("assets", []):
-        if a.get("name") == INSTALLER_ASSET_NAME:
+        if "GestaoDeCursos_Setup" in a.get("name", ""):
             return a.get("browser_download_url")
-    raise RuntimeError(f"Asset '{INSTALLER_ASSET_NAME}' não encontrado no Latest Release.")
+    raise RuntimeError("Asset 'GestaoDeCursos_Setup*' não encontrado no Latest Release.")
 
 
 class DownloadThread(QThread):
@@ -4135,7 +4135,7 @@ class DownloadThread(QThread):
     def run(self):
         try:
             temp_dir = tempfile.gettempdir()
-            installer_path = os.path.join(temp_dir, INSTALLER_ASSET_NAME)
+            installer_path = os.path.join(temp_dir, "GestaoDeCursos_Setup.exe")
 
             with requests.get(self.download_url, stream=True, timeout=30) as r:
                 r.raise_for_status()
