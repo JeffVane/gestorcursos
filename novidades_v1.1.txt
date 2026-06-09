@@ -1,0 +1,17 @@
+Gestão de Cursos - Versão 1.1
+
+Novidades e melhorias desta versão:
+
+- Envio de e-mail diretamente da tela de programação de cursos
+- Editor de e-mail com 3 seções: Cabeçalho, Corpo e Rodapé
+- Botões e imagens com suporte a CID (compatível com Gmail/Outlook)
+- Prévia visual do e-mail com dados reais do curso
+- Templates de e-mail (salvar, carregar, renomear, excluir)
+- Editor de código-fonte HTML
+- Atraso configurável no envio (1-60 segundos)
+- Envio em segundo plano (não trava a interface)
+- Aba de Logs para acompanhamento do envio
+- Configuração SMTP com teste de envio
+- Barra de rolagem na edição de instrutores
+- Melhorias na prévia: corpo do e-mail maior e mais largo
+- Correções e melhorias de usabilidade
