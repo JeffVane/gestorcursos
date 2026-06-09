@@ -1,7 +1,12 @@
+; Instalador para o Gestão de Cursos
+
+#define AppVersion Trim(FileRead(FileOpen("version.txt")))
+#define BuildDir "build\exe.win-amd64-3.13"
+
 [Setup]
 ; Informações básicas do aplicativo
 AppName=Gestão de Cursos
-AppVersion=1.1
+AppVersion={#AppVersion}
 AppPublisher=Gestor Cursos
 AppPublisherURL=
 AppSupportURL=
@@ -10,13 +15,20 @@ DefaultDirName={autopf}\Gestao de Cursos
 DefaultGroupName=Gestão de Cursos
 AllowNoIcons=yes
 OutputDir=installer_output
-OutputBaseFilename=GestãoDeCursos_Setup_v1.1
+OutputBaseFilename=GestaoDeCursos_Setup
 SetupIconFile=crc.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64
+
+UsePreviousAppDir=yes
+DisableProgramGroupPage=yes
+
+CloseApplications=yes
+CloseApplicationsFilter=Gestão De Cursos.exe
+RestartApplications=no
 
 ; Informações de novidades da versão
 InfoBeforeFile=novidades_v1.1.txt

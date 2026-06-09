@@ -3,10 +3,10 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QCalendarWidget, QDialog, QMessageBox,
     QListWidget, QListWidgetItem, QMenu, QAction, QComboBox, QTimeEdit,
     QHBoxLayout, QHeaderView, QLineEdit, QFileDialog, QTabWidget, QCheckBox,
-    QInputDialog, QPlainTextEdit, QSpinBox
+    QInputDialog, QPlainTextEdit, QSpinBox, QProgressDialog
 )
 import sqlite3
-from PyQt5.QtCore import Qt, QDate, QTime, pyqtSignal, QThread
+from PyQt5.QtCore import Qt, QDate, QTime, pyqtSignal, QThread, QEventLoop
 from PyQt5.QtGui import QTextCharFormat, QColor, QIcon
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
@@ -20,6 +20,8 @@ from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtCore import QUrl
 import re
 from urllib.parse import urlencode, parse_qs
+import requests
+from packaging.version import Version, InvalidVersion
 
 
 
@@ -4074,10 +4076,177 @@ class ConfigEmailWindow(QDialog):
             self.test_result.setStyleSheet("color: red;")
 
 
+# ---------------- Configurações de Atualização ----------------
+REPO_OWNER = "JeffVane"
+REPO_NAME = "gestorcursos"
+BRANCH = "main"
+
+VERSION_URL = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/{BRANCH}/version.txt"
+LOCAL_VERSION_FILE = "version.txt"
+
+LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
+INSTALLER_ASSET_NAME = "GestaoDeCursos_Setup.exe"
+# --------------------------------------------------------------
+
+
+def get_remote_version():
+    try:
+        r = requests.get(VERSION_URL, timeout=10)
+        r.raise_for_status()
+        return r.text.strip()
+    except:
+        return None
+
+
+def get_local_version():
+    try:
+        with open(LOCAL_VERSION_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except:
+        return "0.0.0"
+
+
+def parse_version(v: str) -> Version:
+    try:
+        return Version(v.strip())
+    except InvalidVersion:
+        return Version("0.0.0")
+
+
+def get_latest_installer_url():
+    r = requests.get(LATEST_RELEASE_API, timeout=10)
+    r.raise_for_status()
+    data = r.json()
+    for a in data.get("assets", []):
+        if a.get("name") == INSTALLER_ASSET_NAME:
+            return a.get("browser_download_url")
+    raise RuntimeError(f"Asset '{INSTALLER_ASSET_NAME}' não encontrado no Latest Release.")
+
+
+class DownloadThread(QThread):
+    progress_update = pyqtSignal(int, float, float)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, download_url: str, parent=None):
+        super().__init__(parent)
+        self.download_url = download_url
+
+    def run(self):
+        try:
+            temp_dir = tempfile.gettempdir()
+            installer_path = os.path.join(temp_dir, INSTALLER_ASSET_NAME)
+
+            with requests.get(self.download_url, stream=True, timeout=30) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("content-length", 0))
+                downloaded = 0
+                chunk_size = 2 * 1024 * 1024
+
+                with open(installer_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total > 0:
+                                percent = int((downloaded / total) * 100)
+                                mb_down = downloaded / (1024 * 1024)
+                                mb_total = total / (1024 * 1024)
+                                self.progress_update.emit(percent, mb_down, mb_total)
+
+            self.finished.emit(installer_path)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+def verificar_atualizacao():
+    if sys.platform != 'win32':
+        return False
+
+    remote_txt = get_remote_version()
+    local_txt = get_local_version()
+
+    if not remote_txt:
+        return False
+
+    remote = parse_version(remote_txt)
+    local = parse_version(local_txt)
+
+    if remote <= local:
+        return False
+
+    if not QApplication.instance():
+        _ = QApplication(sys.argv)
+
+    resposta = QMessageBox.question(
+        None,
+        "Atualização disponível",
+        f"Uma nova versão do sistema está disponível!\n\n"
+        f"Versão atual: {local}\nNova versão: {remote}\n\n"
+        f"Deseja baixar e instalar agora?",
+        QMessageBox.Yes | QMessageBox.No,
+        QMessageBox.Yes
+    )
+
+    if resposta != QMessageBox.Yes:
+        return False
+
+    try:
+        installer_url = get_latest_installer_url()
+    except Exception as e:
+        QMessageBox.critical(None, "Erro", f"Não foi possível localizar o instalador no GitHub Releases:\n{e}")
+        return False
+
+    progress = QProgressDialog("Preparando download...", "Cancelar", 0, 100)
+    progress.setWindowTitle("Baixando Atualização")
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumWidth(420)
+    progress.setValue(0)
+    progress.show()
+
+    thread = DownloadThread(installer_url)
+
+    def atualizar_barra(percent, mb_down, mb_total):
+        progress.setValue(percent)
+        progress.setLabelText(f"Baixando: {mb_down:.1f} MB de {mb_total:.1f} MB")
+
+    def ao_finalizar(caminho):
+        progress.close()
+        if sys.platform == 'win32':
+            import ctypes
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", caminho, None, None, 1)
+            sys.exit(0)
+        else:
+            QMessageBox.information(None, "Download concluído", f"Instalador salvo em:\n{caminho}\n\nExecute manualmente para instalar.")
+            loop.quit()
+
+    def ao_errar(mensagem):
+        progress.close()
+        QMessageBox.critical(None, "Erro", f"Erro ao baixar instalador:\n{mensagem}")
+        loop.quit()
+
+    thread.progress_update.connect(atualizar_barra)
+    thread.finished.connect(ao_finalizar)
+    thread.error.connect(ao_errar)
+
+    loop = QEventLoop()
+    thread.finished.connect(loop.quit)
+    thread.error.connect(loop.quit)
+
+    thread.start()
+    loop.exec_()
+
+    return True
+
+
 if __name__ == '__main__':
     criar_banco()
     app = QApplication(sys.argv)
-    janela = MainWindow()
-    janela.show()
-    atualizar_banco()
-    sys.exit(app.exec_())
+    atualizado = verificar_atualizacao()
+    if not atualizado:
+        janela = MainWindow()
+        janela.show()
+        atualizar_banco()
+        sys.exit(app.exec_())
+    else:
+        sys.exit(0)

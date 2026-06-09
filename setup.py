@@ -24,6 +24,9 @@ include_files = [
     "crc.ico",
     "teste.ico",
 
+    # versão
+    "version.txt",
+
     # plugins do Qt (necessário pro platform plugin "windows")
     (qt_plugins_path, "Qt5/plugins"),
 
@@ -35,7 +38,7 @@ build_exe_options = {
     "packages": [
         "sqlite3", "PyQt5", "reportlab", "datetime", "os", "sys", "re",
         "tempfile", "smtplib", "email", "email.mime.text", "email.mime.multipart",
-        "email.mime.image", "urllib.parse",
+        "email.mime.image", "urllib.parse", "requests", "packaging",
     ],
     "includes": [
         "PyQt5.QtCore",
