@@ -31,7 +31,7 @@ CloseApplicationsFilter=Gestão De Cursos.exe
 RestartApplications=no
 
 ; Informações de novidades da versão
-InfoBeforeFile=novidades_v1.1.txt
+InfoBeforeFile=novidades_v1.2.txt
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

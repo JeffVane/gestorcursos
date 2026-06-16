@@ -1,0 +1,11 @@
+Novidades da versão 1.2:
+
+- Botões com fundo transparente e borda azul
+- Menu principal com ícones/emojis em cada item
+- Tabelas com bordas e padding reduzidos
+- Border-radius reduzido em todos os elementos
+- Coluna "Subtemas" adicionada na janela de Cursos Cadastrados
+- Filtros por coluna no Histórico de Cursos (estilo Excel)
+- Instrutores filtrados por curso ao programar
+- Auto-sugestão do próximo instrutor baseado no último que ministrou
+- Verificação automática de atualizações a cada 5 minutos
