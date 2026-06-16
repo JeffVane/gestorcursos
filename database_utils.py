@@ -114,6 +114,16 @@ def atualizar_banco():
     if "processo_sei" not in colunas_instrutores:
         cursor.execute("ALTER TABLE instrutores ADD COLUMN processo_sei TEXT")
 
+    # >>> NOVOS CAMPOS: CREDENCIAMENTO <<<
+    if "data_solicitacao_credenciamento" not in colunas_instrutores:
+        cursor.execute("ALTER TABLE instrutores ADD COLUMN data_solicitacao_credenciamento TEXT")
+    if "validade_contrato" not in colunas_instrutores:
+        cursor.execute("ALTER TABLE instrutores ADD COLUMN validade_contrato TEXT")
+    if "convocado_ano" not in colunas_instrutores:
+        cursor.execute("ALTER TABLE instrutores ADD COLUMN convocado_ano TEXT")
+    if "sugestoes_cursos" not in colunas_instrutores:
+        cursor.execute("ALTER TABLE instrutores ADD COLUMN sugestoes_cursos TEXT")
+
     # Verificar e adicionar colunas na tabela 'cursos_datas'
     cursor.execute("PRAGMA table_info(cursos_datas)")
     colunas_cursos_datas = [coluna[1] for coluna in cursor.fetchall()]
@@ -155,6 +165,50 @@ def atualizar_banco():
                 conteudo BLOB,
                 data_cadastro TEXT DEFAULT (datetime('now')),
                 FOREIGN KEY(curso_id) REFERENCES cursos(id)
+            )
+        ''')
+
+    # Criar tabela de temas se não existir
+    cursor.execute("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='temas'
+    """)
+    if not cursor.fetchone():
+        cursor.execute('''
+            CREATE TABLE temas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL UNIQUE
+            )
+        ''')
+
+    # Criar tabela de subtemas se não existir
+    cursor.execute("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='subtemas'
+    """)
+    if not cursor.fetchone():
+        cursor.execute('''
+            CREATE TABLE subtemas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tema_id INTEGER NOT NULL,
+                nome TEXT NOT NULL,
+                FOREIGN KEY(tema_id) REFERENCES temas(id) ON DELETE CASCADE
+            )
+        ''')
+
+    # Criar tabela de associação temas-instrutores se não existir
+    cursor.execute("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='temas_instrutores'
+    """)
+    if not cursor.fetchone():
+        cursor.execute('''
+            CREATE TABLE temas_instrutores (
+                tema_id INTEGER NOT NULL,
+                instrutor_id INTEGER NOT NULL,
+                FOREIGN KEY(tema_id) REFERENCES temas(id) ON DELETE CASCADE,
+                FOREIGN KEY(instrutor_id) REFERENCES instrutores(id) ON DELETE CASCADE,
+                PRIMARY KEY(tema_id, instrutor_id)
             )
         ''')
 

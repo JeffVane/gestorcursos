@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget,
     QTableWidgetItem, QDialog, QMessageBox, QListWidget, QListWidgetItem,
     QComboBox, QTimeEdit, QHBoxLayout, QCalendarWidget, QHeaderView, QFileDialog, QTextEdit,
-    QScrollArea
+    QScrollArea, QDateEdit, QCheckBox, QTabWidget
 )
 import sqlite3
 from PyQt5.QtCore import Qt, QDate, QTime
@@ -115,65 +115,121 @@ class CadastroInstrutorWindow(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Cadastrar Instrutor")
         self.setWindowIcon(QIcon("cadastre-se.png"))
-        self.setGeometry(200, 200, 600, 400)
-        layout = QVBoxLayout()
+        self.setGeometry(200, 200, 700, 650)
+
+        main_layout = QVBoxLayout()
+
+        # Scroll Area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
 
         layout.addWidget(QLabel("Nome do Instrutor"))
         self.instrutor_input = QLineEdit()
         layout.addWidget(self.instrutor_input)
 
-        layout.addWidget(QLabel("CPF"))
+        # CPF e CNPJ lado a lado
+        row_doc = QHBoxLayout()
+        row_doc.addWidget(QLabel("CPF"))
         self.cpf_input = QLineEdit()
-        self.cpf_input.setPlaceholderText("Digite apenas se quiser (ex: 123.456.789-00)")
+        self.cpf_input.setPlaceholderText("ex: 123.456.789-00")
         self.cpf_input.setClearButtonEnabled(True)
-        self.cpf_input.setPlaceholderText("")  # campo começa vazio
         self.cpf_input.editingFinished.connect(self.validar_cpf_campo)
-        layout.addWidget(self.cpf_input)
-
-        layout.addWidget(QLabel("CNPJ (se houver)"))
+        row_doc.addWidget(self.cpf_input)
+        row_doc.addWidget(QLabel("CNPJ (se houver)"))
         self.cnpj_input = QLineEdit()
-        layout.addWidget(self.cnpj_input)
+        row_doc.addWidget(self.cnpj_input)
+        layout.addLayout(row_doc)
 
-        layout.addWidget(QLabel("Nome da Empresa"))
+        # Empresa e Processo SEI lado a lado
+        row_emp = QHBoxLayout()
+        row_emp.addWidget(QLabel("Nome da Empresa"))
         self.empresa_input = QLineEdit()
-        layout.addWidget(self.empresa_input)
-
-        layout.addWidget(QLabel("Nº Processo SEI"))
+        row_emp.addWidget(self.empresa_input)
+        row_emp.addWidget(QLabel("Nº Processo SEI"))
         self.processo_sei_input = QLineEdit()
         self.processo_sei_input.setPlaceholderText("Ex: 00000.000000/2024-11")
-        layout.addWidget(self.processo_sei_input)
+        row_emp.addWidget(self.processo_sei_input)
+        layout.addLayout(row_emp)
 
-        layout.addWidget(QLabel("E-mail"))
+        # E-mail e Telefone lado a lado
+        row_contato = QHBoxLayout()
+        row_contato.addWidget(QLabel("E-mail"))
         self.email_input = QLineEdit()
-        layout.addWidget(self.email_input)
-
-        layout.addWidget(QLabel("Telefone"))
+        row_contato.addWidget(self.email_input)
+        row_contato.addWidget(QLabel("Telefone"))
         self.telefone_input = QLineEdit()
         self.telefone_input.setInputMask("(00) 9 0000-0000;_")
-        self.telefone_input.setPlaceholderText("")  # começa vazio
         self.telefone_input.setClearButtonEnabled(True)
         self.telefone_input.editingFinished.connect(self.validar_telefone_campo)
-        layout.addWidget(self.telefone_input)
+        row_contato.addWidget(self.telefone_input)
+        layout.addLayout(row_contato)
 
-        layout.addWidget(QLabel("Nível de Formação"))
+        # Datas lado a lado
+        row_datas = QHBoxLayout()
+        row_datas.addWidget(QLabel("Data Solicitação Credenciamento"))
+        self.data_solicitacao_input = QDateEdit()
+        self.data_solicitacao_input.setCalendarPopup(True)
+        self.data_solicitacao_input.setDate(QDate.currentDate())
+        self.data_solicitacao_input.setDisplayFormat("dd/MM/yyyy")
+        row_datas.addWidget(self.data_solicitacao_input)
+        row_datas.addWidget(QLabel("Validade do Contrato"))
+        self.validade_contrato_input = QDateEdit()
+        self.validade_contrato_input.setCalendarPopup(True)
+        self.validade_contrato_input.setDate(QDate.currentDate())
+        self.validade_contrato_input.setDisplayFormat("dd/MM/yyyy")
+        row_datas.addWidget(self.validade_contrato_input)
+        layout.addLayout(row_datas)
+
+        # Convocado + Sugestões
+        row_conv = QHBoxLayout()
+        self.convocado_check = QCheckBox("Convocado para ministrar cursos no ano")
+        row_conv.addWidget(self.convocado_check)
+        row_conv.addStretch()
+        layout.addLayout(row_conv)
+
+        layout.addWidget(QLabel("Sugestões de Cursos"))
+        self.sugestoes_cursos_input = QTextEdit()
+        self.sugestoes_cursos_input.setMaximumHeight(60)
+        layout.addWidget(self.sugestoes_cursos_input)
+
+        layout.addWidget(QLabel("Temas que o Instrutor Ministra"))
+        self.temas_instrutor_list = QListWidget()
+        self.temas_instrutor_list.setSelectionMode(QListWidget.MultiSelection)
+        self.temas_instrutor_list.setMaximumHeight(100)
+        self.carregar_temas_para_instrutor()
+        layout.addWidget(self.temas_instrutor_list)
+
+        # Nível e Modalidade lado a lado
+        row_perfis = QHBoxLayout()
+
+        col_nivel = QVBoxLayout()
+        col_nivel.addWidget(QLabel("Nível de Formação"))
         self.niveis_formacao_list = QListWidget()
         self.niveis_formacao_list.setSelectionMode(QListWidget.MultiSelection)
-        niveis_formacao = ["Doutor", "Especialista", "Graduação", "Mestre"]
-        for nivel in niveis_formacao:
+        self.niveis_formacao_list.setMaximumHeight(80)
+        for nivel in ["Doutor", "Especialista", "Graduação", "Mestre"]:
             self.niveis_formacao_list.addItem(QListWidgetItem(nivel))
-        layout.addWidget(self.niveis_formacao_list)
+        col_nivel.addWidget(self.niveis_formacao_list)
+        row_perfis.addLayout(col_nivel)
 
-        layout.addWidget(QLabel("Modalidade"))
+        col_mod = QVBoxLayout()
+        col_mod.addWidget(QLabel("Modalidade"))
         self.modalidades_list = QListWidget()
         self.modalidades_list.setSelectionMode(QListWidget.MultiSelection)
-        modalidades = ["Presencial", "On-line", "Conteudista"]
-        for modalidade in modalidades:
+        self.modalidades_list.setMaximumHeight(80)
+        for modalidade in ["Presencial", "On-line", "Conteudista"]:
             self.modalidades_list.addItem(QListWidgetItem(modalidade))
-        layout.addWidget(self.modalidades_list)
+        col_mod.addWidget(self.modalidades_list)
+        row_perfis.addLayout(col_mod)
+
+        layout.addLayout(row_perfis)
 
         # ===== Documentos anexos =====
-        layout.addWidget(QLabel("Documentos do Instrutor (PDF, Word, Imagens, etc.)"))
+        layout.addWidget(QLabel("Documentos do Instrutor"))
         self.docs_list = QListWidget()
+        self.docs_list.setMaximumHeight(80)
         layout.addWidget(self.docs_list)
 
         btn_docs_layout = QHBoxLayout()
@@ -187,15 +243,16 @@ class CadastroInstrutorWindow(QDialog):
 
         layout.addLayout(btn_docs_layout)
 
-        # Lista interna de caminhos selecionados
         self.documentos_paths = []
 
+        scroll.setWidget(scroll_widget)
+        main_layout.addWidget(scroll)
 
         self.add_button = QPushButton("Cadastrar")
         self.add_button.clicked.connect(self.cadastrar_instrutor)
-        layout.addWidget(self.add_button)
+        main_layout.addWidget(self.add_button)
 
-        self.setLayout(layout)
+        self.setLayout(main_layout)
 
     def anexar_documentos(self):
         arquivos, _ = QFileDialog.getOpenFileNames(
@@ -224,6 +281,22 @@ class CadastroInstrutorWindow(QDialog):
         p = item.data(Qt.UserRole)
         if p in self.documentos_paths:
             self.documentos_paths.remove(p)
+
+    def carregar_temas_para_instrutor(self):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM temas ORDER BY nome ASC")
+            temas = cursor.fetchall()
+            conn.close()
+
+            self.temas_instrutor_list.clear()
+            for tema in temas:
+                item = QListWidgetItem(tema[1])
+                item.setData(Qt.UserRole, tema[0])
+                self.temas_instrutor_list.addItem(item)
+        except Exception as e:
+            print(f"Erro ao carregar temas: {e}")
 
     def validar_cpf_campo(self):
         cpf_digits = re.sub(r"\D", "", self.cpf_input.text())
@@ -313,8 +386,9 @@ class CadastroInstrutorWindow(QDialog):
 
             cursor.execute("""
                 INSERT INTO instrutores 
-                (nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?,?)
+                (nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades,
+                 data_solicitacao_credenciamento, validade_contrato, convocado_ano, sugestoes_cursos)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
             nome,
             cpf_digits if cpf_digits else None,
@@ -324,7 +398,11 @@ class CadastroInstrutorWindow(QDialog):
             self.email_input.text().strip() or None,
             tel_digits if tel_digits else None,
             ",".join(niveis_selecionados) if niveis_selecionados else None,
-            ",".join(modalidades_selecionadas) if modalidades_selecionadas else None
+            ",".join(modalidades_selecionadas) if modalidades_selecionadas else None,
+            self.data_solicitacao_input.date().toString("yyyy-MM-dd"),
+            self.validade_contrato_input.date().toString("yyyy-MM-dd"),
+            "Sim" if self.convocado_check.isChecked() else "Não",
+            self.sugestoes_cursos_input.toPlainText().strip() or None
         ))
 
             instrutor_id = cursor.lastrowid
@@ -353,6 +431,12 @@ class CadastroInstrutorWindow(QDialog):
                         f"Não foi possível anexar o arquivo:\n{path}\n\nErro: {e}"
                     )
 
+            # Salvar temas associados ao instrutor
+            temas_selecionados = [item.data(Qt.UserRole) for item in self.temas_instrutor_list.selectedItems()]
+            for tema_id in temas_selecionados:
+                cursor.execute("INSERT OR IGNORE INTO temas_instrutores (tema_id, instrutor_id) VALUES (?, ?)",
+                               (tema_id, instrutor_id))
+
             conn.commit()
             conn.close()
 
@@ -366,9 +450,14 @@ class CadastroInstrutorWindow(QDialog):
             self.telefone_input.clear()
             self.niveis_formacao_list.clearSelection()
             self.modalidades_list.clearSelection()
+            self.temas_instrutor_list.clearSelection()
             self.docs_list.clear()
             self.documentos_paths.clear()
             self.processo_sei_input.clear()
+            self.data_solicitacao_input.setDate(QDate.currentDate())
+            self.validade_contrato_input.setDate(QDate.currentDate())
+            self.convocado_check.setChecked(False)
+            self.sugestoes_cursos_input.clear()
 
 
         except sqlite3.IntegrityError:
@@ -392,64 +481,116 @@ class EditarInstrutorWindow(QDialog):
         self.instrutor_combo.currentIndexChanged.connect(self.carregar_dados_instrutor)
         layout.addWidget(self.instrutor_combo)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
+        # ===== Abas =====
+        self.tabs = QTabWidget()
 
-        scroll_layout.addWidget(QLabel("Nome do Instrutor"))
+        # --- Aba 1: Dados do Instrutor ---
+        tab_dados = QWidget()
+        tab_dados_layout = QVBoxLayout(tab_dados)
+
+        scroll_dados = QScrollArea()
+        scroll_dados.setWidgetResizable(True)
+        scroll_dados_widget = QWidget()
+        scroll_dados_layout = QVBoxLayout(scroll_dados_widget)
+
+        scroll_dados_layout.addWidget(QLabel("Nome do Instrutor"))
         self.instrutor_input = QLineEdit()
-        scroll_layout.addWidget(self.instrutor_input)
-        scroll_layout.addWidget(QLabel("CPF"))
+        scroll_dados_layout.addWidget(self.instrutor_input)
+        scroll_dados_layout.addWidget(QLabel("CPF"))
         self.cpf_input = QLineEdit()
-        scroll_layout.addWidget(self.cpf_input)
+        scroll_dados_layout.addWidget(self.cpf_input)
 
-        scroll_layout.addWidget(QLabel("CNPJ (se houver)"))
+        scroll_dados_layout.addWidget(QLabel("CNPJ (se houver)"))
         self.cnpj_input = QLineEdit()
-        scroll_layout.addWidget(self.cnpj_input)
+        scroll_dados_layout.addWidget(self.cnpj_input)
 
-        scroll_layout.addWidget(QLabel("Nome da Empresa"))
+        scroll_dados_layout.addWidget(QLabel("Nome da Empresa"))
         self.empresa_input = QLineEdit()
-        scroll_layout.addWidget(self.empresa_input)
+        scroll_dados_layout.addWidget(self.empresa_input)
 
-        scroll_layout.addWidget(QLabel("Nº Processo SEI"))
+        scroll_dados_layout.addWidget(QLabel("Nº Processo SEI"))
         self.processo_sei_input = QLineEdit()
-        scroll_layout.addWidget(self.processo_sei_input)
+        scroll_dados_layout.addWidget(self.processo_sei_input)
 
-        scroll_layout.addWidget(QLabel("E-mail"))
+        scroll_dados_layout.addWidget(QLabel("E-mail"))
         self.email_input = QLineEdit()
-        scroll_layout.addWidget(self.email_input)
+        scroll_dados_layout.addWidget(self.email_input)
 
-        scroll_layout.addWidget(QLabel("Telefone"))
+        scroll_dados_layout.addWidget(QLabel("Telefone"))
         self.telefone_input = QLineEdit()
-        scroll_layout.addWidget(self.telefone_input)
+        scroll_dados_layout.addWidget(self.telefone_input)
 
-        scroll_layout.addWidget(QLabel("Nível de Formação"))
+        scroll_dados_layout.addWidget(QLabel("Data de Solicitação de Credenciamento"))
+        self.data_solicitacao_input = QDateEdit()
+        self.data_solicitacao_input.setCalendarPopup(True)
+        self.data_solicitacao_input.setDate(QDate.currentDate())
+        self.data_solicitacao_input.setDisplayFormat("dd/MM/yyyy")
+        scroll_dados_layout.addWidget(self.data_solicitacao_input)
+
+        scroll_dados_layout.addWidget(QLabel("Validade do Contrato"))
+        self.validade_contrato_input = QDateEdit()
+        self.validade_contrato_input.setCalendarPopup(True)
+        self.validade_contrato_input.setDate(QDate.currentDate())
+        self.validade_contrato_input.setDisplayFormat("dd/MM/yyyy")
+        scroll_dados_layout.addWidget(self.validade_contrato_input)
+
+        self.convocado_check = QCheckBox("Convocado para ministrar cursos durante o ano")
+        scroll_dados_layout.addWidget(self.convocado_check)
+
+        scroll_dados_layout.addWidget(QLabel("Sugestões de Cursos"))
+        self.sugestoes_cursos_input = QTextEdit()
+        self.sugestoes_cursos_input.setMaximumHeight(80)
+        scroll_dados_layout.addWidget(self.sugestoes_cursos_input)
+
+        scroll_dados_layout.addWidget(QLabel("Temas que o Instrutor Ministra"))
+        self.temas_instrutor_list = QListWidget()
+        self.temas_instrutor_list.setSelectionMode(QListWidget.MultiSelection)
+        self.temas_instrutor_list.setMaximumHeight(100)
+        self.carregar_temas_para_instrutor()
+        scroll_dados_layout.addWidget(self.temas_instrutor_list)
+
+        scroll_dados_layout.addWidget(QLabel("Nível de Formação"))
         self.niveis_formacao_list = QListWidget()
         self.niveis_formacao_list.setSelectionMode(QListWidget.MultiSelection)
         niveis_formacao = ["Doutor", "Especialista", "Graduação", "Mestre"]
         for nivel in niveis_formacao:
             self.niveis_formacao_list.addItem(QListWidgetItem(nivel))
-        scroll_layout.addWidget(self.niveis_formacao_list)
+        scroll_dados_layout.addWidget(self.niveis_formacao_list)
 
-        scroll_layout.addWidget(QLabel("Modalidade"))
+        scroll_dados_layout.addWidget(QLabel("Modalidade"))
         self.modalidades_list = QListWidget()
         self.modalidades_list.setSelectionMode(QListWidget.MultiSelection)
         modalidades = ["Presencial", "On-line", "Conteudista"]
         for modalidade in modalidades:
             self.modalidades_list.addItem(QListWidgetItem(modalidade))
-        scroll_layout.addWidget(self.modalidades_list)
+        scroll_dados_layout.addWidget(self.modalidades_list)
 
-        scroll_layout.addWidget(QLabel("Cursos Associados"))
+        scroll_dados_layout.addStretch()
+
+        scroll_dados.setWidget(scroll_dados_widget)
+        tab_dados_layout.addWidget(scroll_dados)
+
+        self.tabs.addTab(tab_dados, "Dados do Instrutor")
+
+        # --- Aba 2: Cursos e Documentos ---
+        tab_cursos = QWidget()
+        tab_cursos_layout = QVBoxLayout(tab_cursos)
+
+        scroll_cursos = QScrollArea()
+        scroll_cursos.setWidgetResizable(True)
+        scroll_cursos_widget = QWidget()
+        scroll_cursos_layout = QVBoxLayout(scroll_cursos_widget)
+
+        scroll_cursos_layout.addWidget(QLabel("Cursos Associados"))
         self.cursos_list = QListWidget()
         self.cursos_list.setSelectionMode(QListWidget.MultiSelection)
-        scroll_layout.addWidget(self.cursos_list)
+        scroll_cursos_layout.addWidget(self.cursos_list)
 
         # ===== Documentos do Instrutor =====
-        scroll_layout.addWidget(QLabel("Documentos do Instrutor"))
+        scroll_cursos_layout.addWidget(QLabel("Documentos do Instrutor"))
 
         self.docs_list = QListWidget()
-        scroll_layout.addWidget(self.docs_list)
+        scroll_cursos_layout.addWidget(self.docs_list)
 
         docs_btns = QHBoxLayout()
 
@@ -461,13 +602,17 @@ class EditarInstrutorWindow(QDialog):
         self.btn_del_doc.clicked.connect(self.excluir_documento_selecionado)
         docs_btns.addWidget(self.btn_del_doc)
 
-        scroll_layout.addLayout(docs_btns)
+        scroll_cursos_layout.addLayout(docs_btns)
 
         # guarda paths novos (ainda não salvos)
         self.novos_documentos_paths = []
 
-        scroll.setWidget(scroll_widget)
-        layout.addWidget(scroll)
+        scroll_cursos.setWidget(scroll_cursos_widget)
+        tab_cursos_layout.addWidget(scroll_cursos)
+
+        self.tabs.addTab(tab_cursos, "Cursos e Documentos")
+
+        layout.addWidget(self.tabs)
 
         self.save_button = QPushButton("Salvar Alterações")
         self.save_button.clicked.connect(self.salvar_alteracoes)
@@ -508,8 +653,8 @@ class EditarInstrutorWindow(QDialog):
             conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades
-
+                SELECT nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades,
+                       data_solicitacao_credenciamento, validade_contrato, convocado_ano, sugestoes_cursos
                 FROM instrutores
                 WHERE id = ?
             """, (instrutor_id,))
@@ -517,7 +662,8 @@ class EditarInstrutorWindow(QDialog):
             instrutor = cursor.fetchone()
 
             if instrutor:
-                (nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades) = instrutor
+                (nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades,
+                 data_solicitacao, validade_contrato, convocado_ano, sugestoes_cursos) = instrutor
 
                 self.processo_sei_input.setText(processo_sei or "")
                 self.instrutor_input.setText(nome)
@@ -526,6 +672,19 @@ class EditarInstrutorWindow(QDialog):
                 self.empresa_input.setText(empresa or "")
                 self.email_input.setText(email or "")
                 self.telefone_input.setText(telefone or "")
+
+                if data_solicitacao:
+                    self.data_solicitacao_input.setDate(QDate.fromString(data_solicitacao, "yyyy-MM-dd"))
+                else:
+                    self.data_solicitacao_input.setDate(QDate.currentDate())
+
+                if validade_contrato:
+                    self.validade_contrato_input.setDate(QDate.fromString(validade_contrato, "yyyy-MM-dd"))
+                else:
+                    self.validade_contrato_input.setDate(QDate.currentDate())
+
+                self.convocado_check.setChecked(convocado_ano == "Sim" if convocado_ano else False)
+                self.sugestoes_cursos_input.setPlainText(sugestoes_cursos or "")
 
                 if niveis_formacao:
                     niveis_lista = niveis_formacao.split(",")
@@ -554,6 +713,16 @@ class EditarInstrutorWindow(QDialog):
                     item = self.cursos_list.item(i)
                     if item.data(Qt.UserRole) in cursos_associados:
                         item.setSelected(True)
+
+                # Carregar temas associados ao instrutor
+                self.temas_instrutor_list.clearSelection()
+                cursor.execute("SELECT tema_id FROM temas_instrutores WHERE instrutor_id = ?", (instrutor_id,))
+                temas_associados = {row[0] for row in cursor.fetchall()}
+                for i in range(self.temas_instrutor_list.count()):
+                    item = self.temas_instrutor_list.item(i)
+                    if item.data(Qt.UserRole) in temas_associados:
+                        item.setSelected(True)
+
                 self.carregar_documentos_instrutor(instrutor_id)
 
             else:
@@ -597,6 +766,22 @@ class EditarInstrutorWindow(QDialog):
             it = QListWidgetItem("(Sem documentos)")
             it.setFlags(Qt.NoItemFlags)
             self.docs_list.addItem(it)
+
+    def carregar_temas_para_instrutor(self):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM temas ORDER BY nome ASC")
+            temas = cursor.fetchall()
+            conn.close()
+
+            self.temas_instrutor_list.clear()
+            for tema in temas:
+                item = QListWidgetItem(tema[1])
+                item.setData(Qt.UserRole, tema[0])
+                self.temas_instrutor_list.addItem(item)
+        except Exception as e:
+            print(f"Erro ao carregar temas: {e}")
 
     def adicionar_documentos(self):
         arquivos, _ = QFileDialog.getOpenFileNames(
@@ -687,8 +872,11 @@ class EditarInstrutorWindow(QDialog):
             email = ?,
             telefone = ?,
             niveis_formacao = ?,
-            modalidades = ?
-
+            modalidades = ?,
+            data_solicitacao_credenciamento = ?,
+            validade_contrato = ?,
+            convocado_ano = ?,
+            sugestoes_cursos = ?
             WHERE id = ?
                 """, (
             nome,
@@ -700,12 +888,23 @@ class EditarInstrutorWindow(QDialog):
             self.telefone_input.text().strip(),
             ",".join(niveis_selecionados),
             ",".join(modalidades_selecionadas),
+            self.data_solicitacao_input.date().toString("yyyy-MM-dd"),
+            self.validade_contrato_input.date().toString("yyyy-MM-dd"),
+            "Sim" if self.convocado_check.isChecked() else "Não",
+            self.sugestoes_cursos_input.toPlainText().strip() or None,
             instrutor_id
         ))
 
         cursor.execute("DELETE FROM instrutores_cursos WHERE instrutor_id = ?", (instrutor_id,))
         for curso_id in cursos_selecionados:
             cursor.execute("INSERT INTO instrutores_cursos (instrutor_id, curso_id) VALUES (?, ?)", (instrutor_id, curso_id))
+
+        # ===== Salvar temas associados ao instrutor =====
+        temas_selecionados = [item.data(Qt.UserRole) for item in self.temas_instrutor_list.selectedItems()]
+        cursor.execute("DELETE FROM temas_instrutores WHERE instrutor_id = ?", (instrutor_id,))
+        for tema_id in temas_selecionados:
+            cursor.execute("INSERT INTO temas_instrutores (tema_id, instrutor_id) VALUES (?, ?)",
+                           (tema_id, instrutor_id))
 
         # ===== Inserir novos documentos anexados =====
         for path in self.novos_documentos_paths:
@@ -752,10 +951,7 @@ class CadastroCursoWindow(QDialog):
 
         layout.addWidget(QLabel("Tema do Curso"))
         self.tema_combo = QComboBox()
-        temas = ["Contabilidade", "Direito", "Especializações", "Ética",
-                 "Ferramentas", "Gestão", "Recursos Humanos", "Tecnologia",
-                 "Tributos e Obrigações Acessórias"]
-        self.tema_combo.addItems(temas)
+        self.carregar_temas_combo()
         layout.addWidget(self.tema_combo)
 
         layout.addWidget(QLabel("Código EPC"))
@@ -773,7 +969,7 @@ class CadastroCursoWindow(QDialog):
         layout.addWidget(QLabel("Descrição do Curso"))
         self.descricao_input = QTextEdit()
         self.descricao_input.setPlaceholderText("Digite a descrição do curso...")
-        self.descricao_input.setFixedHeight(120)  # opcional
+        self.descricao_input.setFixedHeight(120)
         layout.addWidget(self.descricao_input)
 
         self.add_button = QPushButton("Cadastrar")
@@ -809,6 +1005,22 @@ class CadastroCursoWindow(QDialog):
         texto_corrigido = " ".join(self.curso_input.text().split()).strip()
         if self.curso_input.text() != texto_corrigido:
             self.curso_input.setText(texto_corrigido)
+
+    def carregar_temas_combo(self):
+        """Carrega os temas do banco de dados no combo de temas"""
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM temas ORDER BY nome ASC")
+            temas = cursor.fetchall()
+            conn.close()
+            
+            self.tema_combo.clear()
+            self.tema_combo.addItem("")
+            for tema in temas:
+                self.tema_combo.addItem(tema[1], tema[0])
+        except Exception as e:
+            print(f"Erro ao carregar temas: {e}")
 
     def cadastrar_curso(self):
         nome = self.curso_input.text().strip()
@@ -1072,4 +1284,423 @@ class ExcluirInstrutorWindow(QDialog):
                 pass
             QMessageBox.critical(self, "Erro Crítico", f"Erro ao excluir instrutor: {str(e)}")
 
-# Continua no próximo arquivo com as classes restantes...
+
+class CadastrarTemasSubtemasWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowIcon(QIcon("cadastre-se.png"))
+        self.setWindowTitle("Cadastrar Temas e Subtemas")
+        self.setGeometry(200, 200, 600, 540)
+        main_layout = QVBoxLayout()
+
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
+
+        # === ABA 1: Temas e Subtemas ===
+        aba_temas = QWidget()
+        aba_temas_layout = QVBoxLayout()
+
+        aba_temas_layout.addWidget(QLabel("Gerenciar Temas"))
+
+        tema_input_layout = QHBoxLayout()
+        self.novo_tema_input = QLineEdit()
+        self.novo_tema_input.setPlaceholderText("Novo tema...")
+        self.novo_tema_input.setMinimumHeight(40)
+        tema_input_layout.addWidget(self.novo_tema_input)
+
+        self.btn_adicionar_tema = QPushButton("Adicionar Tema")
+        self.btn_adicionar_tema.clicked.connect(self.adicionar_tema)
+        self.btn_adicionar_tema.setMinimumHeight(40)
+        tema_input_layout.addWidget(self.btn_adicionar_tema)
+
+        aba_temas_layout.addLayout(tema_input_layout)
+
+        self.lista_temas = QListWidget()
+        self.lista_temas.setMinimumHeight(150)
+        aba_temas_layout.addWidget(self.lista_temas, stretch=1)
+
+        self.btn_excluir_tema = QPushButton("Excluir Tema Selecionado")
+        self.btn_excluir_tema.clicked.connect(self.excluir_tema)
+
+        self.btn_editar_tema = QPushButton("Editar Tema Selecionado")
+        self.btn_editar_tema.clicked.connect(self.editar_tema)
+
+        tema_btns_layout = QHBoxLayout()
+        tema_btns_layout.addWidget(self.btn_excluir_tema)
+        tema_btns_layout.addWidget(self.btn_editar_tema)
+        aba_temas_layout.addLayout(tema_btns_layout)
+
+        aba_temas_layout.addWidget(QLabel("Gerenciar Subtemas"))
+
+        subtema_input_layout = QVBoxLayout()
+        self.combo_tema_pai = QComboBox()
+        self.carregar_temas_combo_pai()
+        self.combo_tema_pai.setMinimumHeight(40)
+        subtema_input_layout.addWidget(self.combo_tema_pai)
+
+        self.novo_subtema_input = QLineEdit()
+        self.novo_subtema_input.setPlaceholderText("Novo subtema...")
+        self.novo_subtema_input.setMinimumHeight(40)
+        subtema_input_layout.addWidget(self.novo_subtema_input)
+
+        self.btn_adicionar_subtema = QPushButton("Adicionar Subtema")
+        self.btn_adicionar_subtema.clicked.connect(self.adicionar_subtema)
+        self.btn_adicionar_subtema.setMinimumHeight(40)
+        subtema_input_layout.addWidget(self.btn_adicionar_subtema)
+
+        aba_temas_layout.addLayout(subtema_input_layout)
+
+        self.lista_subtemas = QListWidget()
+        self.lista_subtemas.setMinimumHeight(150)
+        aba_temas_layout.addWidget(self.lista_subtemas, stretch=1)
+
+        self.btn_excluir_subtema = QPushButton("Excluir Subtema Selecionado")
+        self.btn_excluir_subtema.clicked.connect(self.excluir_subtema)
+
+        self.btn_editar_subtema = QPushButton("Editar Subtema Selecionado")
+        self.btn_editar_subtema.clicked.connect(self.editar_subtema)
+
+        subtema_btns_layout = QHBoxLayout()
+        subtema_btns_layout.addWidget(self.btn_excluir_subtema)
+        subtema_btns_layout.addWidget(self.btn_editar_subtema)
+        aba_temas_layout.addLayout(subtema_btns_layout)
+
+        aba_temas.setLayout(aba_temas_layout)
+        self.tabs.addTab(aba_temas, "Temas e Subtemas")
+
+        # === ABA 2: Associar Instrutores ===
+        aba_instrutores = QWidget()
+        aba_instrutores_layout = QVBoxLayout()
+
+        aba_instrutores_layout.addWidget(QLabel("Selecione o Instrutor"))
+
+        self.combo_instrutor = QComboBox()
+        self.carregar_instrutores_combo()
+        self.combo_instrutor.setMinimumHeight(40)
+        aba_instrutores_layout.addWidget(self.combo_instrutor)
+
+        aba_instrutores_layout.addWidget(QLabel("Selecione os Temas para associar"))
+
+        self.lista_temas_assoc = QListWidget()
+        self.lista_temas_assoc.setSelectionMode(QListWidget.MultiSelection)
+        self.lista_temas_assoc.setMinimumHeight(250)
+        aba_instrutores_layout.addWidget(self.lista_temas_assoc, stretch=1)
+
+        self.btn_salvar_assoc = QPushButton("Salvar Associações")
+        self.btn_salvar_assoc.clicked.connect(self.salvar_assoc_instrutor_tema)
+        self.btn_salvar_assoc.setMinimumHeight(40)
+        aba_instrutores_layout.addWidget(self.btn_salvar_assoc)
+
+        aba_instrutores.setLayout(aba_instrutores_layout)
+        self.tabs.addTab(aba_instrutores, "Associar Instrutores")
+
+        self.setLayout(main_layout)
+
+        self.combo_tema_pai.currentIndexChanged.connect(self.carregar_subtemas)
+        self.combo_instrutor.currentIndexChanged.connect(self.on_instrutor_assoc_changed)
+
+        self.carregar_lista_temas()
+        self.carregar_temas_assoc()
+
+    def carregar_temas_combo_pai(self):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM temas ORDER BY nome ASC")
+            temas = cursor.fetchall()
+            conn.close()
+
+            self.combo_tema_pai.clear()
+            for tema in temas:
+                self.combo_tema_pai.addItem(tema[1], tema[0])
+        except Exception as e:
+            print(f"Erro ao carregar temas: {e}")
+
+    def carregar_temas_combo_instrutor(self):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM temas ORDER BY nome ASC")
+            temas = cursor.fetchall()
+            conn.close()
+
+            self.combo_tema_instrutor.clear()
+            for tema in temas:
+                self.combo_tema_instrutor.addItem(tema[1], tema[0])
+        except Exception as e:
+            print(f"Erro ao carregar temas: {e}")
+
+    def carregar_lista_temas(self):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM temas ORDER BY nome ASC")
+            temas = cursor.fetchall()
+            conn.close()
+
+            self.lista_temas.clear()
+            for tema in temas:
+                item = QListWidgetItem(tema[1])
+                item.setData(Qt.UserRole, tema[0])
+                self.lista_temas.addItem(item)
+        except Exception as e:
+            print(f"Erro ao carregar temas: {e}")
+
+    def adicionar_tema(self):
+        nome = self.novo_tema_input.text().strip()
+        if not nome:
+            QMessageBox.warning(self, "Erro", "Digite o nome do tema.")
+            return
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO temas (nome) VALUES (?)", (nome,))
+            conn.commit()
+            conn.close()
+
+            self.novo_tema_input.clear()
+            self.carregar_lista_temas()
+            self.carregar_temas_combo_pai()
+            QMessageBox.information(self, "Sucesso", f'Tema "{nome}" adicionado com sucesso!')
+        except sqlite3.IntegrityError:
+            QMessageBox.warning(self, "Erro", "Já existe um tema com esse nome.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao adicionar tema:\n{str(e)}")
+
+    def excluir_tema(self):
+        item = self.lista_temas.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Erro", "Selecione um tema para excluir.")
+            return
+
+        tema_id = item.data(Qt.UserRole)
+        tema_nome = item.text()
+
+        reply = QMessageBox.question(
+            self, "Confirmar Exclusão",
+            f'Tem certeza que deseja excluir o tema "{tema_nome}"?\n'
+            "Todos os subtemas associados também serão excluídos.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM subtemas WHERE tema_id = ?", (tema_id,))
+                cursor.execute("DELETE FROM temas WHERE id = ?", (tema_id,))
+                conn.commit()
+                conn.close()
+
+                self.carregar_lista_temas()
+                self.carregar_temas_combo_pai()
+                QMessageBox.information(self, "Sucesso", "Tema excluído com sucesso!")
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao excluir tema:\n{str(e)}")
+
+    def editar_tema(self):
+        item = self.lista_temas.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Erro", "Selecione um tema para editar.")
+            return
+
+        tema_id = item.data(Qt.UserRole)
+        tema_atual = item.text()
+
+        from PyQt5.QtWidgets import QInputDialog
+        novo_nome, ok = QInputDialog.getText(self, "Editar Tema", "Nome do tema:", text=tema_atual)
+        if not ok or not novo_nome.strip():
+            return
+
+        novo_nome = novo_nome.strip()
+        if novo_nome == tema_atual:
+            return
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("UPDATE temas SET nome = ? WHERE id = ?", (novo_nome, tema_id))
+            conn.commit()
+            conn.close()
+
+            self.carregar_lista_temas()
+            self.carregar_temas_combo_pai()
+            self.carregar_temas_assoc()
+            QMessageBox.information(self, "Sucesso", f'Tema renomeado para "{novo_nome}"!')
+        except sqlite3.IntegrityError:
+            QMessageBox.warning(self, "Erro", "Já existe um tema com esse nome.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao editar tema:\n{str(e)}")
+
+    def adicionar_subtema(self):
+        if self.combo_tema_pai.count() == 0:
+            QMessageBox.warning(self, "Erro", "Adicione um tema primeiro.")
+            return
+
+        tema_id = self.combo_tema_pai.currentData()
+        nome = self.novo_subtema_input.text().strip()
+
+        if not nome:
+            QMessageBox.warning(self, "Erro", "Digite o nome do subtema.")
+            return
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO subtemas (tema_id, nome) VALUES (?, ?)", (tema_id, nome))
+            conn.commit()
+            conn.close()
+
+            self.novo_subtema_input.clear()
+            self.carregar_subtemas()
+            QMessageBox.information(self, "Sucesso", f'Subtema "{nome}" adicionado com sucesso!')
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao adicionar subtema:\n{str(e)}")
+
+    def excluir_subtema(self):
+        item = self.lista_subtemas.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Erro", "Selecione um subtema para excluir.")
+            return
+
+        subtema_id = item.data(Qt.UserRole)
+        subtema_nome = item.text()
+
+        reply = QMessageBox.question(
+            self, "Confirmar Exclusão",
+            f'Tem certeza que deseja excluir o subtema "{subtema_nome}"?',
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM subtemas WHERE id = ?", (subtema_id,))
+                conn.commit()
+                conn.close()
+
+                self.carregar_subtemas()
+                QMessageBox.information(self, "Sucesso", "Subtema excluído com sucesso!")
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao excluir subtema:\n{str(e)}")
+
+    def editar_subtema(self):
+        item = self.lista_subtemas.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Erro", "Selecione um subtema para editar.")
+            return
+
+        subtema_id = item.data(Qt.UserRole)
+        subtema_atual = item.text()
+
+        from PyQt5.QtWidgets import QInputDialog
+        novo_nome, ok = QInputDialog.getText(self, "Editar Subtema", "Nome do subtema:", text=subtema_atual)
+        if not ok or not novo_nome.strip():
+            return
+
+        novo_nome = novo_nome.strip()
+        if novo_nome == subtema_atual:
+            return
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("UPDATE subtemas SET nome = ? WHERE id = ?", (novo_nome, subtema_id))
+            conn.commit()
+            conn.close()
+
+            self.carregar_subtemas()
+            QMessageBox.information(self, "Sucesso", f'Subtema renomeado para "{novo_nome}"!')
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao editar subtema:\n{str(e)}")
+
+    def carregar_subtemas(self):
+        self.lista_subtemas.clear()
+
+        if self.combo_tema_pai.count() == 0:
+            return
+
+        tema_id = self.combo_tema_pai.currentData()
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM subtemas WHERE tema_id = ? ORDER BY nome ASC", (tema_id,))
+            subtemas = cursor.fetchall()
+            conn.close()
+
+            for subtema in subtemas:
+                item = QListWidgetItem(subtema[1])
+                item.setData(Qt.UserRole, subtema[0])
+                self.lista_subtemas.addItem(item)
+        except Exception as e:
+            print(f"Erro ao carregar subtemas: {e}")
+
+    def carregar_instrutores_combo(self):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nome FROM instrutores ORDER BY nome ASC")
+            instrutores = cursor.fetchall()
+            conn.close()
+
+            self.combo_instrutor.clear()
+            for instrutor in instrutores:
+                self.combo_instrutor.addItem(instrutor[1], instrutor[0])
+        except Exception as e:
+            print(f"Erro ao carregar instrutores: {e}")
+
+    def on_instrutor_assoc_changed(self):
+        self.carregar_temas_assoc()
+
+    def carregar_temas_assoc(self):
+        instrutor_id = self.combo_instrutor.currentData()
+        self.lista_temas_assoc.clear()
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT id, nome FROM temas ORDER BY nome ASC")
+            todos_temas = cursor.fetchall()
+
+            if instrutor_id:
+                cursor.execute("SELECT tema_id FROM temas_instrutores WHERE instrutor_id = ?", (instrutor_id,))
+                temas_associados = {row[0] for row in cursor.fetchall()}
+            else:
+                temas_associados = set()
+
+            conn.close()
+
+            for tema in todos_temas:
+                item = QListWidgetItem(tema[1])
+                item.setData(Qt.UserRole, tema[0])
+                if tema[0] in temas_associados:
+                    item.setSelected(True)
+                self.lista_temas_assoc.addItem(item)
+        except Exception as e:
+            print(f"Erro ao carregar temas: {e}")
+
+    def salvar_assoc_instrutor_tema(self):
+        instrutor_id = self.combo_instrutor.currentData()
+        if not instrutor_id:
+            QMessageBox.warning(self, "Erro", "Selecione um instrutor.")
+            return
+
+        temas_selecionados = [item.data(Qt.UserRole) for item in self.lista_temas_assoc.selectedItems()]
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM temas_instrutores WHERE instrutor_id = ?", (instrutor_id,))
+            for tema_id in temas_selecionados:
+                cursor.execute("INSERT INTO temas_instrutores (tema_id, instrutor_id) VALUES (?, ?)",
+                               (tema_id, instrutor_id))
+            conn.commit()
+            conn.close()
+
+            QMessageBox.information(self, "Sucesso", "Associações salvas com sucesso!")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao salvar associações:\n{str(e)}")

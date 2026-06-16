@@ -6,13 +6,13 @@ from PyQt5.QtWidgets import (
     QInputDialog, QPlainTextEdit, QSpinBox, QProgressDialog
 )
 import sqlite3
-from PyQt5.QtCore import Qt, QDate, QTime, pyqtSignal, QThread, QEventLoop
-from PyQt5.QtGui import QTextCharFormat, QColor, QIcon
+from PyQt5.QtCore import Qt, QDate, QTime, pyqtSignal, QThread, QEventLoop, QEvent, QPoint, QRect, QTimer
+from PyQt5.QtGui import QTextCharFormat, QColor, QIcon, QFont, QPen
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from reportlab.lib import colors
 from reportlab.lib.utils import simpleSplit
-from PyQt5.QtWidgets import QFormLayout, QGroupBox, QDialogButtonBox, QGridLayout, QTextEdit,QTimeEdit,QFrame
+from PyQt5.QtWidgets import QFormLayout, QGroupBox, QDialogButtonBox, QGridLayout, QTextEdit,QTimeEdit,QFrame, QDateEdit, QScrollArea
 from PyQt5.QtGui import QIntValidator
 import os
 import tempfile
@@ -30,7 +30,7 @@ import sys
 # Importar classes das janelas de diálogo
 from dialog_windows import (
     CadastroInstrutorWindow, EditarInstrutorWindow, CadastroCursoWindow,
-    AssociarCursoWindow, ExcluirInstrutorWindow
+    AssociarCursoWindow, ExcluirInstrutorWindow, CadastrarTemasSubtemasWindow
 )
 
 # Importar funções do banco de dados
@@ -65,6 +65,7 @@ class ProgramarCursoWindow(QDialog):
 
         form_layout.addWidget(QLabel("Selecione o Curso"))
         self.curso_combo = QComboBox()
+        self.curso_combo.currentIndexChanged.connect(self.filtrar_instrutores_por_curso)
         form_layout.addWidget(self.curso_combo)
 
         form_layout.addWidget(QLabel("Selecione a Hora"))
@@ -93,7 +94,6 @@ class ProgramarCursoWindow(QDialog):
         layout.addLayout(button_layout)
         self.setLayout(layout)
 
-        self.carregar_instrutores()
         self.carregar_cursos()
         self.carregar_programacoes_existentes()
 
@@ -118,6 +118,53 @@ class ProgramarCursoWindow(QDialog):
         self.curso_combo.clear()
         for curso in cursos:
             self.curso_combo.addItem(curso[1], curso[0])
+
+    def filtrar_instrutores_por_curso(self):
+        curso_id = self.curso_combo.currentData()
+        self.instrutor_combo.clear()
+
+        if not curso_id:
+            return
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT i.id, i.nome FROM instrutores i
+                JOIN instrutores_cursos ic ON ic.instrutor_id = i.id
+                WHERE ic.curso_id = ?
+                ORDER BY i.nome
+            """, (curso_id,))
+            instrutores = cursor.fetchall()
+
+            ultimo_instrutor_id = None
+            cursor.execute("""
+                SELECT instrutor_id FROM cursos_datas
+                WHERE curso_id = ?
+                ORDER BY data DESC, hora DESC
+                LIMIT 1
+            """, (curso_id,))
+            ultimo = cursor.fetchone()
+            if ultimo:
+                ultimo_instrutor_id = ultimo[0]
+
+            conn.close()
+
+            self.instrutor_combo.clear()
+            indice_sugerido = 0
+            for idx, (i_id, i_nome) in enumerate(instrutores):
+                self.instrutor_combo.addItem(i_nome, i_id)
+                if ultimo_instrutor_id and i_id == ultimo_instrutor_id:
+                    indice_sugerido = idx + 1
+
+            if instrutores:
+                if indice_sugerido >= len(instrutores):
+                    indice_sugerido = 0
+                self.instrutor_combo.setCurrentIndex(indice_sugerido)
+
+        except Exception as e:
+            print(f"Erro ao filtrar instrutores: {e}")
 
     def carregar_programacoes_existentes(self):
         conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
@@ -263,6 +310,12 @@ class DetalhesInstrutorDialog(QDialog):
 
         layout_principal = QVBoxLayout(self)
 
+        # Scroll Area para todo o conteúdo
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        layout_principal_scroll = QVBoxLayout(scroll_widget)
+
         # ===== Grupo: Identificação =====
         grp_id = QGroupBox("Identificação")
         grid_id = QGridLayout()
@@ -291,7 +344,7 @@ class DetalhesInstrutorDialog(QDialog):
         grid_id.addWidget(self.txt_processo_sei, 3, 1, 1, 3)
 
         grp_id.setLayout(grid_id)
-        layout_principal.addWidget(grp_id)
+        layout_principal_scroll.addWidget(grp_id)
 
         # ===== Grupo: Contato =====
         grp_ct = QGroupBox("Contato")
@@ -304,7 +357,7 @@ class DetalhesInstrutorDialog(QDialog):
         form_ct.addRow("Telefone", self.txt_telefone)
 
         grp_ct.setLayout(form_ct)
-        layout_principal.addWidget(grp_ct)
+        layout_principal_scroll.addWidget(grp_ct)
 
         # ===== Grupo: Perfil =====
         grp_pf = QGroupBox("Perfil")
@@ -317,7 +370,28 @@ class DetalhesInstrutorDialog(QDialog):
         form_pf.addRow("Modalidades", self.txt_modalidades)
 
         grp_pf.setLayout(form_pf)
-        layout_principal.addWidget(grp_pf)
+        layout_principal_scroll.addWidget(grp_pf)
+
+        # ===== Grupo: Credenciamento =====
+        grp_cr = QGroupBox("Credenciamento")
+        form_cr = QFormLayout()
+
+        self.txt_data_solicitacao = QLineEdit(); self._ro(self.txt_data_solicitacao)
+        self.txt_data_solicitacao.setMinimumHeight(28)
+        self.txt_validade_contrato = QLineEdit(); self._ro(self.txt_validade_contrato)
+        self.txt_validade_contrato.setMinimumHeight(28)
+        self.txt_convocado_ano = QLineEdit(); self._ro(self.txt_convocado_ano)
+        self.txt_convocado_ano.setMinimumHeight(28)
+        self.txt_sugestoes_cursos = QTextEdit(); self.txt_sugestoes_cursos.setReadOnly(True)
+        self.txt_sugestoes_cursos.setMinimumHeight(60)
+
+        form_cr.addRow("Data de Solicitação", self.txt_data_solicitacao)
+        form_cr.addRow("Validade do Contrato", self.txt_validade_contrato)
+        form_cr.addRow("Convocado no Ano", self.txt_convocado_ano)
+        form_cr.addRow("Sugestões de Cursos", self.txt_sugestoes_cursos)
+
+        grp_cr.setLayout(form_cr)
+        layout_principal_scroll.addWidget(grp_cr)
 
         # ===== Grupo: Cursos =====
         grp_cs = QGroupBox("Cursos associados")
@@ -329,7 +403,7 @@ class DetalhesInstrutorDialog(QDialog):
 
         v_cs.addWidget(self.txt_cursos)
         grp_cs.setLayout(v_cs)
-        layout_principal.addWidget(grp_cs)
+        layout_principal_scroll.addWidget(grp_cs)
 
         # ===== Grupo: Documentos =====
         grp_docs = QGroupBox("Documentos do Instrutor")
@@ -343,13 +417,13 @@ class DetalhesInstrutorDialog(QDialog):
         self.docs_list.customContextMenuRequested.connect(self.menu_documentos)
 
         grp_docs.setLayout(v_docs)
-        layout_principal.addWidget(grp_docs)
+        layout_principal_scroll.addWidget(grp_docs)
 
 
         # ===== Botões =====
         self.buttons = QDialogButtonBox(QDialogButtonBox.Close)
         self.buttons.rejected.connect(self.close)
-        layout_principal.addWidget(self.buttons)
+        layout_principal_scroll.addWidget(self.buttons)
 
         # Estilo leve e limpo
         self.setStyleSheet("""
@@ -377,6 +451,9 @@ class DetalhesInstrutorDialog(QDialog):
             }
         """)
 
+        scroll.setWidget(scroll_widget)
+        layout_principal.addWidget(scroll)
+
         self.carregar(instrutor_id)
 
     def _ro(self, w: QLineEdit):
@@ -391,8 +468,8 @@ class DetalhesInstrutorDialog(QDialog):
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades
-
+                SELECT nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis_formacao, modalidades,
+                       data_solicitacao_credenciamento, validade_contrato, convocado_ano, sugestoes_cursos
                 FROM instrutores
                 WHERE id = ?
             """, (instrutor_id,))
@@ -414,7 +491,8 @@ class DetalhesInstrutorDialog(QDialog):
                 self.close()
                 return
 
-            nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis, modalidades = dados
+            nome, cpf, cnpj, empresa, processo_sei, email, telefone, niveis, modalidades, \
+                data_solicitacao, validade_contrato, convocado_ano, sugestoes_cursos = dados
 
             self.txt_processo_sei.setText(self._v(processo_sei))
             self.txt_nome.setText(self._v(nome))
@@ -425,6 +503,10 @@ class DetalhesInstrutorDialog(QDialog):
             self.txt_telefone.setText(self._v(telefone))
             self.txt_niveis.setText(self._v(niveis))
             self.txt_modalidades.setText(self._v(modalidades))
+            self.txt_data_solicitacao.setText(self._v(data_solicitacao))
+            self.txt_validade_contrato.setText(self._v(validade_contrato))
+            self.txt_convocado_ano.setText(self._v(convocado_ano))
+            self.txt_sugestoes_cursos.setPlainText(self._v(sugestoes_cursos))
             self.instrutor_id = instrutor_id
             self.carregar_documentos(instrutor_id)
 
@@ -650,35 +732,30 @@ class ExibirCursosWindow(QDialog):
 
         layout = QVBoxLayout()
 
-        # Barra de pesquisa
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("Pesquisar:"))
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(
-            "Digite código EPC, curso, tema, descrição ou carga horária..."
+            "Digite código EPC, curso, tema, subtema, descrição ou carga horária..."
         )
         self.search_input.textChanged.connect(self.aplicar_filtro)
         search_layout.addWidget(self.search_input)
         layout.addLayout(search_layout)
 
         self.tabela = QTableWidget()
-        self.tabela.setColumnCount(5)
+        self.tabela.setColumnCount(6)
         self.tabela.setHorizontalHeaderLabels([
-            "Código EPC",
-            "Curso",
-            "Tema",
-            "Descrição",
-            "Carga Horária"
+            "Código EPC", "Curso", "Tema", "Subtemas", "Descrição", "Carga Horária"
         ])
         self.tabela.horizontalHeader().setStretchLastSection(True)
 
-        # Ajuste de colunas
         header = self.tabela.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # EPC
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Curso
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Tema
-        header.setSectionResizeMode(3, QHeaderView.Stretch)           # Descrição
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Carga horária
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
 
         self.tabela.setWordWrap(False)
         self.tabela.verticalHeader().setDefaultSectionSize(28)
@@ -696,7 +773,6 @@ class ExibirCursosWindow(QDialog):
             conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
             cursor = conn.cursor()
 
-            # Compatibilidade com bancos antigos
             cursor.execute("PRAGMA table_info(cursos)")
             colunas = [coluna[1] for coluna in cursor.fetchall()]
 
@@ -720,7 +796,25 @@ class ExibirCursosWindow(QDialog):
                 ORDER BY nome ASC
             """)
 
-            self.cursos_brutos = cursor.fetchall()
+            cursos = cursor.fetchall()
+
+            self.cursos_brutos = []
+            for curso in cursos:
+                curso_id, epc, nome, tema, descricao, carga_horaria = curso
+                subtemas = []
+                if tema:
+                    try:
+                        cursor.execute("""
+                            SELECT s.nome FROM subtemas s
+                            JOIN temas t ON s.tema_id = t.id
+                            WHERE t.nome = ?
+                            ORDER BY s.nome ASC
+                        """, (tema,))
+                        subtemas = [row[0] for row in cursor.fetchall()]
+                    except Exception:
+                        pass
+                self.cursos_brutos.append((curso_id, epc, nome, tema, subtemas, descricao, carga_horaria))
+
             conn.close()
 
             self.aplicar_filtro()
@@ -736,13 +830,14 @@ class ExibirCursosWindow(QDialog):
         else:
             cursos_filtrados = []
             for row_data in self.cursos_brutos:
-                curso_id = row_data[0]
                 epc = row_data[1]
                 nome = row_data[2]
                 tema = row_data[3]
-                descricao = row_data[4]
-                carga_horaria = row_data[5]
-                alvo = f"{epc or ''} {nome or ''} {tema or ''} {descricao or ''} {carga_horaria or ''}".lower()
+                subtemas = row_data[4]
+                descricao = row_data[5]
+                carga_horaria = row_data[6]
+                subtemas_txt = " ".join(subtemas) if subtemas else ""
+                alvo = f"{epc or ''} {nome or ''} {tema or ''} {subtemas_txt} {descricao or ''} {carga_horaria or ''}".lower()
                 if texto in alvo:
                     cursos_filtrados.append(row_data)
 
@@ -753,8 +848,9 @@ class ExibirCursosWindow(QDialog):
             epc = row_data[1]
             nome = row_data[2]
             tema = row_data[3]
-            descricao = row_data[4]
-            carga_horaria = row_data[5]
+            subtemas = row_data[4]
+            descricao = row_data[5]
+            carga_horaria = row_data[6]
 
             self.tabela.insertRow(row)
 
@@ -767,6 +863,10 @@ class ExibirCursosWindow(QDialog):
 
             item_tema = QTableWidgetItem(tema or "")
             item_tema.setFlags(item_tema.flags() & ~Qt.ItemIsEditable)
+
+            subtemas_txt = ", ".join(subtemas) if subtemas else ""
+            item_subtemas = QTableWidgetItem(subtemas_txt)
+            item_subtemas.setFlags(item_subtemas.flags() & ~Qt.ItemIsEditable)
 
             descricao_txt = (descricao or "").replace("\n", " ").replace("\r", " ").strip()
             if len(descricao_txt) > 120:
@@ -783,8 +883,9 @@ class ExibirCursosWindow(QDialog):
             self.tabela.setItem(row, 0, item_epc)
             self.tabela.setItem(row, 1, item_nome)
             self.tabela.setItem(row, 2, item_tema)
-            self.tabela.setItem(row, 3, item_desc)
-            self.tabela.setItem(row, 4, item_carga)
+            self.tabela.setItem(row, 3, item_subtemas)
+            self.tabela.setItem(row, 4, item_desc)
+            self.tabela.setItem(row, 5, item_carga)
 
         self.tabela.resizeRowsToContents()
 
@@ -1155,6 +1256,103 @@ class GerenciarAlunosWindow(QDialog):
                 QMessageBox.critical(self, "Erro", f"Erro ao excluir aluno: {str(e)}")
 
 
+class FilterHeader(QHeaderView):
+    filter_clicked = pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(Qt.Horizontal, parent)
+        self.filter_icons = {}
+        self.active_filters = {}
+        self.setSectionsClickable(True)
+        self.setHighlightSections(False)
+        self.setDefaultSectionSize(100)
+        self.setStyleSheet("QHeaderView::section { }")
+
+    def set_filter_for_column(self, col, unique_values):
+        self.filter_icons[col] = sorted(unique_values)
+        self.active_filters[col] = set(unique_values)
+        self.viewport().update()
+
+    def mousePressEvent(self, event):
+        col = self.logicalIndexAt(event.pos())
+        if col < 0 or col not in self.filter_icons:
+            super().mousePressEvent(event)
+            return
+
+        section_pos = self.sectionPosition(col)
+        section_width = self.sectionSize(col)
+        btn_x = section_pos + section_width - 24
+
+        if event.pos().x() >= btn_x:
+            self.filter_clicked.emit(col)
+        else:
+            super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        from PyQt5.QtGui import QPainter
+        painter = QPainter(self.viewport())
+        
+        for logicalIndex in range(self.count()):
+            if logicalIndex not in self.filter_icons:
+                rect = self.sectionViewportPosition(logicalIndex)
+                w = self.sectionSize(logicalIndex)
+                section_rect = QRect(rect, 0, w, self.height())
+                painter.save()
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor("#4a90e2"))
+                painter.drawRect(section_rect)
+                painter.setPen(QPen(QColor("#ffffff")))
+                font = painter.font()
+                font.setPixelSize(12)
+                font.setBold(True)
+                painter.setFont(font)
+                text_rect = QRect(section_rect.left() + 8, 0, section_rect.width() - 8, self.height())
+                header_text = self.model().headerData(logicalIndex, Qt.Horizontal) or ""
+                painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, str(header_text))
+                painter.restore()
+                continue
+
+            x = self.sectionViewportPosition(logicalIndex)
+            w = self.sectionSize(logicalIndex)
+            section_rect = QRect(x, 0, w, self.height())
+
+            painter.save()
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#4a90e2"))
+            painter.drawRect(section_rect)
+
+            painter.setPen(QPen(QColor("#357abd")))
+            painter.drawLine(section_rect.topRight(), section_rect.bottomRight())
+
+            painter.setPen(QPen(QColor("#ffffff")))
+            font = painter.font()
+            font.setPixelSize(12)
+            font.setBold(True)
+            painter.setFont(font)
+            text_rect = QRect(section_rect.left() + 8, 0, section_rect.width() - 32, self.height())
+            header_text = self.model().headerData(logicalIndex, Qt.Horizontal) or ""
+            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, str(header_text))
+
+            btn_rect = QRect(section_rect.right() - 24, 2, 22, self.height() - 4)
+            painter.setPen(QPen(QColor("#ffffff")))
+            painter.drawText(btn_rect, Qt.AlignCenter, "\u25bc")
+
+            active = self.active_filters.get(logicalIndex, set())
+            total = self.filter_icons.get(logicalIndex, set())
+            if active != total:
+                painter.setPen(QPen(QColor("#ffdd00")))
+                painter.setFont(QFont(font.family(), 8, QFont.Bold))
+                painter.drawText(btn_rect.adjusted(-12, 2, -12, 2), Qt.AlignCenter, "\u2022")
+
+            painter.restore()
+
+        painter.end()
+
+    def sectionSizeHint(self, logicalIndex):
+        return super().sectionSizeHint(logicalIndex) + 24
+
+
 class HistoricoWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1200,20 +1398,22 @@ class HistoricoWindow(QDialog):
         self.tabela = QTableWidget()
         self.tabela.setColumnCount(8)
         self.tabela.setHorizontalHeaderLabels([
-            "Código EPC", "Curso", "Tema", "Descrição", "Carga Horária",
+            "Código EPC", "Curso", "Tema", "Conteúdo Programático", "Carga Horária",
             "Instrutor", "Datas", "Horário"
         ])
-        self.tabela.horizontalHeader().setStretchLastSection(True)
 
-        # Larguras (ajuste fino se quiser)
-        self.tabela.setColumnWidth(0, 120)  # EPC
-        self.tabela.setColumnWidth(1, 280)  # Curso
-        self.tabela.setColumnWidth(2, 160)  # Tema
-        self.tabela.setColumnWidth(3, 420)  # Descrição
-        self.tabela.setColumnWidth(4, 110)  # Carga horária
-        self.tabela.setColumnWidth(5, 220)  # Instrutor
-        self.tabela.setColumnWidth(6, 220)  # Datas
-        self.tabela.setColumnWidth(7, 120)  # Horário
+        self.filter_header = FilterHeader(self.tabela)
+        self.tabela.setHorizontalHeader(self.filter_header)
+        self.filter_header.filter_clicked.connect(self._show_filter_popup)
+
+        self.tabela.setColumnWidth(0, 120)
+        self.tabela.setColumnWidth(1, 280)
+        self.tabela.setColumnWidth(2, 160)
+        self.tabela.setColumnWidth(3, 420)
+        self.tabela.setColumnWidth(4, 110)
+        self.tabela.setColumnWidth(5, 220)
+        self.tabela.setColumnWidth(6, 220)
+        self.tabela.setColumnWidth(7, 120)
 
         layout.addWidget(self.tabela)
 
@@ -1263,7 +1463,8 @@ class HistoricoWindow(QDialog):
 
             self.historico_bruto = historico
 
-            # Popular anos disponíveis a partir do histórico
+            self._popular_filtros_colunas(historico)
+
             anos = sorted({
                 QDate.fromString(d, "yyyy-MM-dd").year()
                 for *_, d, __ in [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]) for r in historico]
@@ -1281,6 +1482,84 @@ class HistoricoWindow(QDialog):
 
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao carregar histórico: {str(e)}")
+
+    def _popular_filtros_colunas(self, historico):
+        unique = [set() for _ in range(8)]
+        for epc, curso, tema, desc, carga, instrutor, data, hora in historico:
+            unique[0].add(epc or "")
+            unique[1].add(curso or "")
+            unique[2].add(tema or "")
+            unique[3].add(desc or "")
+            carga_txt = f"{carga} h" if carga not in (None, "") else ""
+            unique[4].add(carga_txt)
+            unique[5].add(instrutor or "")
+            unique[6].add(data or "")
+            unique[7].add(hora or "")
+
+        for col in range(8):
+            vals = [v for v in unique[col] if v]
+            self.filter_header.set_filter_for_column(col, vals)
+
+        self.filter_header.update()
+
+    def filter_header_changed(self):
+        self.aplicar_filtros()
+
+    def _show_filter_popup(self, col):
+        col_name = self.tabela.horizontalHeaderItem(col).text()
+        all_values = self.filter_header.filter_icons[col]
+        current = self.filter_header.active_filters.get(col, set(all_values))
+
+        popup = QDialog(self)
+        popup.setWindowTitle(f"Filtrar: {col_name}")
+        popup.setMinimumWidth(250)
+        popup.setMaximumHeight(400)
+
+        vl = QVBoxLayout(popup)
+        vl.setContentsMargins(10, 10, 10, 10)
+
+        hl = QHBoxLayout()
+        btn_all = QPushButton("Marcar Todas")
+        btn_none = QPushButton("Desmarcar Todas")
+        hl.addWidget(btn_all)
+        hl.addWidget(btn_none)
+        vl.addLayout(hl)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        sw = QWidget()
+        cl = QVBoxLayout(sw)
+        cl.setContentsMargins(0, 0, 0, 0)
+
+        checkboxes = []
+        for val in all_values:
+            cb = QCheckBox(val)
+            cb.setChecked(val in current)
+            cb.value_text = val
+            checkboxes.append(cb)
+            cl.addWidget(cb)
+
+        cl.addStretch()
+        scroll.setWidget(sw)
+        vl.addWidget(scroll)
+
+        btn_all.clicked.connect(lambda: [cb.setChecked(True) for cb in checkboxes])
+        btn_none.clicked.connect(lambda: [cb.setChecked(False) for cb in checkboxes])
+
+        apply_btn = QPushButton("Aplicar")
+        vl.addWidget(apply_btn)
+
+        def apply_filter():
+            selected = set()
+            for cb in checkboxes:
+                if cb.isChecked():
+                    selected.add(cb.value_text)
+            self.filter_header.active_filters[col] = selected
+            popup.close()
+            self.aplicar_filtros()
+
+        apply_btn.clicked.connect(apply_filter)
+        popup.exec_()
 
     def formatar_datas(self, datas_ordenadas):
         if not datas_ordenadas:
@@ -1316,6 +1595,8 @@ class HistoricoWindow(QDialog):
         mes_selecionado = self.mes_combo.currentData()
         ano_selecionado = self.ano_combo.currentData()
 
+        filtros_col = self.filter_header.active_filters
+
         registros = []
         for epc, curso, tema, descricao, carga, instrutor, data, hora in self.historico_bruto:
             epc_n = norm(epc)
@@ -1323,6 +1604,7 @@ class HistoricoWindow(QDialog):
             tema_n = norm(tema)
             desc_n = norm(descricao)
             carga_n = norm(carga)
+            carga_txt = f"{carga} h" if carga not in (None, "") else ""
             instrutor_n = norm(instrutor)
             hora_n = norm(hora)
 
@@ -1338,6 +1620,23 @@ class HistoricoWindow(QDialog):
             if mes_selecionado is not None and data_qdate.month() != mes_selecionado:
                 continue
             if ano_selecionado is not None and data_qdate.year() != ano_selecionado:
+                continue
+
+            if filtros_col.get(0) is not None and epc_n not in filtros_col[0]:
+                continue
+            if filtros_col.get(1) is not None and curso_n not in filtros_col[1]:
+                continue
+            if filtros_col.get(2) is not None and tema_n not in filtros_col[2]:
+                continue
+            if filtros_col.get(3) is not None and desc_n not in filtros_col[3]:
+                continue
+            if filtros_col.get(4) is not None and carga_txt not in filtros_col[4]:
+                continue
+            if filtros_col.get(5) is not None and instrutor_n not in filtros_col[5]:
+                continue
+            if filtros_col.get(6) is not None and data not in filtros_col[6]:
+                continue
+            if filtros_col.get(7) is not None and hora_n not in filtros_col[7]:
                 continue
 
             registros.append((epc_n, curso_n, tema_n, desc_n, carga_n, instrutor_n, data_qdate, hora_n))
@@ -1378,7 +1677,12 @@ class HistoricoWindow(QDialog):
             self.tabela.setItem(row, 0, item(epc))
             self.tabela.setItem(row, 1, item(curso))
             self.tabela.setItem(row, 2, item(tema))
-            self.tabela.setItem(row, 3, item(desc))
+            item_desc = item(desc)
+            if desc:
+                desc_truncada = (desc[:60] + "...") if len(desc) > 60 else desc
+                item_desc.setText(desc_truncada)
+                item_desc.setToolTip(desc)
+            self.tabela.setItem(row, 3, item_desc)
             self.tabela.setItem(row, 4, item(carga_txt, center=True))
             self.tabela.setItem(row, 5, item(instrutor))
             self.tabela.setItem(row, 6, item(datas))
@@ -1453,7 +1757,7 @@ class HistoricoWindow(QDialog):
             elementos.append(Spacer(1, 6))
 
             # Cabeçalho
-            headers = ["Código EPC", "Curso", "Tema", "Descrição", "CH", "Instrutor", "Datas", "Horário"]
+            headers = ["Código EPC", "Curso", "Tema", "Conteúdo Programático", "CH", "Instrutor", "Datas", "Horário"]
             dados = [[P(h, head) for h in headers]]
 
             # Linhas
@@ -1551,11 +1855,11 @@ class ExcluirCursoWindow(QDialog):
         self.excluir_button.clicked.connect(self.excluir_curso)
         button_layout.addWidget(self.excluir_button)
 
-        layout.addLayout(button_layout)
-
         self.cancelar_button = QPushButton("Cancelar")
         self.cancelar_button.clicked.connect(self.close)
-        layout.addWidget(self.cancelar_button)
+        button_layout.addWidget(self.cancelar_button)
+
+        layout.addLayout(button_layout)
 
         self.setLayout(layout)
         self.carregar_cursos()
@@ -3227,6 +3531,8 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
         self.showMaximized()
 
+        self._setup_auto_update_timer()
+
         # Widget central com layout principal
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -3236,74 +3542,81 @@ class MainWindow(QMainWindow):
         self.central_widget.setLayout(main_layout)
 
         # =========================
-        # PAINEL ESQUERDO (Sidebar)
+        # BARRA DE MENU SUPERIOR
         # =========================
-        left_panel = QWidget()
-        left_layout = QVBoxLayout()
-        left_panel.setLayout(left_layout)
-        left_panel.setMaximumWidth(350)
-        left_panel.setObjectName("leftPanel")
+        menubar = self.menuBar()
+        menubar.setObjectName("appMenuBar")
 
-        # Título do painel (botão com menu dropdown)
-        self.menu_acoes_button = QPushButton("Menu de Ações")
-        self.menu_acoes_button.setObjectName("panelTitle")
-        self.menu_acoes_button.setMenu(self.criar_menu_acoes())
-        left_layout.addWidget(self.menu_acoes_button)
+        # Cadastros
+        menu_cadastros = menubar.addMenu("Cadastros")
+        menu_cadastros.addAction(QAction("🔗 Associar Cursos a Instrutor", self, triggered=self.abrir_associar_curso))
+        menu_cadastros.addAction(QAction("📘 Cadastrar Curso", self, triggered=self.abrir_cadastro_curso))
+        menu_cadastros.addAction(QAction("🏷️ Cadastrar Temas e Subtemas", self, triggered=self.abrir_cadastrar_temas_subtemas))
+        menu_cadastros.addAction(QAction("👨‍🏫 Cadastrar Instrutor", self, triggered=self.abrir_cadastro_instrutor))
 
-        # Separador
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setObjectName("separator")
-        left_layout.addWidget(line)
+        # Edicoes
+        menu_edicoes = menubar.addMenu("Edições")
+        menu_edicoes.addAction(QAction("✏️ Editar/Excluir Curso", self, triggered=self.abrir_editar_excluir_curso))
+        menu_edicoes.addAction(QAction("📝 Editar Instrutor", self, triggered=self.abrir_editar_instrutor))
+        menu_edicoes.addAction(QAction("🗑️ Excluir Instrutor", self, triggered=self.abrir_excluir_instrutor))
 
-        # Botão Programar Curso
-        self.programar_curso_button = QPushButton("Programar Curso")
-        self.programar_curso_button.clicked.connect(self.abrir_programacao_rapida)
-        self.programar_curso_button.setObjectName("primaryButton")
-        left_layout.addWidget(self.programar_curso_button)
+        # Historicos
+        menu_historicos = menubar.addMenu("Históricos")
+        menu_historicos.addAction(QAction("📋 Exibir Cursos", self, triggered=self.abrir_exibir_cursos))
+        menu_historicos.addAction(QAction("ℹ️ Exibir Informações dos Instrutores", self, triggered=self.abrir_exibir_instrutores))
+        menu_historicos.addAction(QAction("🕐 Ver Histórico", self, triggered=self.abrir_historico))
 
-        # Separador
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setObjectName("separator")
-        left_layout.addWidget(line)
+        # Configuracoes
+        menu_config = menubar.addMenu("Configurações")
+        menu_config.addAction(QAction("⚙️ Configurar Email (SMTP)", self, triggered=self.abrir_config_email))
 
-        # Calendário
-        calendar_label = QLabel("Calendário")
-        calendar_label.setObjectName("sectionLabel")
-        left_layout.addWidget(calendar_label)
+        # =========================
+        # CONTEUDO PRINCIPAL
+        # =========================
+        content_widget = QWidget()
+        content_layout = QHBoxLayout()
+        content_widget.setLayout(content_layout)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Calendario (lado esquerdo)
+        calendar_container = QWidget()
+        calendar_layout = QVBoxLayout()
+        calendar_container.setLayout(calendar_layout)
+        calendar_layout.setContentsMargins(10, 10, 0, 10)
 
         self.calendar = QCalendarWidget()
         self.calendar.setFocusPolicy(Qt.NoFocus)
         self.calendar.clicked.connect(self.handle_single_click)
         self.calendar.activated.connect(self.handle_double_click)
         self.calendar.setObjectName("calendar")
-        left_layout.addWidget(self.calendar)
+        calendar_layout.addWidget(self.calendar)
 
-        # Label de datas selecionadas
         self.selected_dates_label = QLabel("Nenhuma data selecionada")
         self.selected_dates_label.setObjectName("infoLabel")
         self.selected_dates_label.setWordWrap(True)
-        left_layout.addWidget(self.selected_dates_label)
+        calendar_layout.addWidget(self.selected_dates_label)
 
-        left_layout.addStretch()
+        self.programar_curso_button = QPushButton("Programar Curso")
+        self.programar_curso_button.clicked.connect(self.abrir_programacao_rapida)
+        self.programar_curso_button.setObjectName("programarButton")
+        self.programar_curso_button.setFixedWidth(160)
+        calendar_layout.addWidget(self.programar_curso_button, alignment=Qt.AlignLeft)
 
-        # =========================
-        # PAINEL DIREITO (Conteúdo)
-        # =========================
-        right_panel = QWidget()
-        right_layout = QVBoxLayout()
-        right_panel.setLayout(right_layout)
-        right_panel.setObjectName("rightPanel")
+        calendar_layout.addStretch()
 
-        # Cabeçalho da tabela
+        content_layout.addWidget(calendar_container, 1)
+
+        # Tabela (lado direito)
+        table_container = QWidget()
+        table_container.setObjectName("rightPanel")
+        table_layout = QVBoxLayout()
+        table_container.setLayout(table_layout)
+        table_layout.setContentsMargins(0, 10, 10, 10)
+
         table_header = QLabel("Cursos Programados")
         table_header.setObjectName("tableHeader")
-        right_layout.addWidget(table_header)
+        table_layout.addWidget(table_header)
 
-        # Tabela de cursos
         self.tabela = QTableWidget()
         self.tabela.setColumnCount(3)
         self.tabela.setHorizontalHeaderLabels(["Curso", "Instrutor", "Horário"])
@@ -3322,11 +3635,11 @@ class MainWindow(QMainWindow):
 
         self.tabela.itemDoubleClicked.connect(self.abrir_detalhes_programacao)
 
-        right_layout.addWidget(self.tabela)
+        table_layout.addWidget(self.tabela)
 
-        # Adicionar painéis ao layout principal
-        main_layout.addWidget(left_panel)
-        main_layout.addWidget(right_panel, 1)
+        content_layout.addWidget(table_container, 2)
+
+        main_layout.addWidget(content_widget, 1)
 
         # Inicialização
         self.selected_dates = set()
@@ -3340,31 +3653,74 @@ class MainWindow(QMainWindow):
                 background-color: #f5f5f5;
             }
 
-            /* ========== PAINÉIS ========== */
-            #leftPanel {
+            /* ========== MENU BAR ========== */
+            #appMenuBar {
                 background-color: #ffffff;
-                border-right: 2px solid #e0e0e0;
-                padding: 15px;
+                border-bottom: 1px solid #e0e0e0;
             }
 
+            #appMenuBar::item {
+                color: #333333;
+                background-color: transparent;
+                padding: 8px 14px;
+                font-size: 13px;
+            }
+
+            #appMenuBar::item:selected {
+                background-color: #f0f4f8;
+                color: #4a90e2;
+            }
+
+            QMenu {
+                background-color: white;
+                border: 1px solid #d0d0d0;
+                border-radius: 2px;
+                padding: 4px;
+            }
+
+            QMenu::item {
+                padding: 8px 30px 8px 16px;
+                border-radius: 2px;
+                margin: 2px 4px;
+                font-size: 13px;
+                color: #333333;
+            }
+
+            QMenu::item:selected {
+                background-color: #f0f4f8;
+                color: #4a90e2;
+            }
+
+            QMenu::separator {
+                height: 1px;
+                background: #e0e0e0;
+                margin: 4px 8px;
+            }
+
+            #programarButton {
+                background-color: transparent;
+                color: #4a90e2;
+                border: 1px solid #4a90e2;
+                border-radius: 2px;
+                padding: 5px 12px;
+                font-size: 12px;
+                font-weight: normal;
+                min-height: 0;
+            }
+
+            #programarButton:hover {
+                background-color: #f0f7ff;
+            }
+
+            /* ========== PAINEL DIREITO ========== */
             #rightPanel {
                 background-color: #ffffff;
                 padding: 20px;
                 margin: 10px;
-                border-radius: 10px;
+                border-radius: 4px;
             }
 
-            /* ========== TÍTULOS E LABELS ========== */
-            #panelTitle {
-                color: white;
-                font-size: 18px;
-                font-weight: bold;
-                padding: 15px;
-                background-color: #4a90e2;
-                border-radius: 8px;
-                margin-bottom: 15px;
-            }
-
+            /* ========== TITULOS E LABELS ========== */
             #tableHeader {
                 color: #4a90e2;
                 font-size: 20px;
@@ -3373,50 +3729,42 @@ class MainWindow(QMainWindow):
                 margin-bottom: 10px;
             }
 
-            #sectionLabel {
-                color: #4a90e2;
-                font-size: 15px;
-                font-weight: bold;
-                padding: 10px 5px 5px 5px;
-            }
-
             #infoLabel {
                 color: #666;
                 font-size: 13px;
                 padding: 10px;
                 background-color: #f8f9fa;
-                border-radius: 6px;
+                border-radius: 2px;
                 border-left: 4px solid #4a90e2;
                 margin-top: 10px;
             }
 
-            /* ========== BOTÕES ========== */
+            /* ========== BOTOES ========== */
             QPushButton {
-                background-color: #4a90e2;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 12px;
-                font-size: 14px;
+                background-color: transparent;
+                color: #4a90e2;
+                border: 1px solid #4a90e2;
+                border-radius: 2px;
+                padding: 5px 14px;
+                font-size: 12px;
                 font-weight: bold;
-                min-height: 40px;
-                box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+                min-height: 22px;
+                min-width: 80px;
             }
 
             QPushButton:hover {
-                background-color: #357abd;
-                box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.3);
+                background-color: #f0f7ff;
             }
 
             QPushButton:pressed {
-                background-color: #2d6cb1;
+                background-color: #d6e9f8;
             }
 
-            /* ========== CALENDÁRIO ========== */
+            /* ========== CALENDARIO ========== */
             #calendar {
                 background-color: white;
-                border: 2px solid #e0e0e0;
-                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+                border-radius: 2px;
                 padding: 5px;
             }
 
@@ -3428,7 +3776,7 @@ class MainWindow(QMainWindow):
             QCalendarWidget QToolButton {
                 color: white;
                 background-color: transparent;
-                border-radius: 4px;
+                border-radius: 2px;
                 padding: 5px;
             }
 
@@ -3454,44 +3802,44 @@ class MainWindow(QMainWindow):
             }
 
             /* ========== TABELA ========== */
-            #coursesTable {
+            QTableWidget {
                 background-color: white;
-                border: 2px solid #e0e0e0;
-                border-radius: 8px;
-                gridline-color: #e0e0e0;
-                font-size: 14px;
+                border: 1px solid #e0e0e0;
+                gridline-color: #e8e8e8;
+                font-size: 12px;
             }
 
-            #coursesTable::item {
-                padding: 10px;
+            QTableWidget::item {
+                padding: 4px 8px;
                 border-bottom: 1px solid #f0f0f0;
             }
 
-            #coursesTable::item:selected {
+            QTableWidget::item:selected {
                 background-color: #4a90e2;
                 color: white;
             }
 
-            #coursesTable::item:hover {
+            QTableWidget::item:hover {
                 background-color: #f0f4f8;
             }
 
             QHeaderView::section {
                 background-color: #4a90e2;
                 color: white;
-                padding: 10px;
-                font-size: 14px;
+                padding: 5px 8px;
+                font-size: 12px;
                 font-weight: bold;
                 border: none;
-                border-right: 1px solid rgba(255, 255, 255, 0.2);
+                border-right: 1px solid #357abd;
+                border-bottom: 2px solid #357abd;
             }
 
             QHeaderView::section:first {
-                border-top-left-radius: 6px;
+                border-top-left-radius: 2px;
             }
 
             QHeaderView::section:last {
-                border-top-right-radius: 6px;
+                border-top-right-radius: 2px;
                 border-right: none;
             }
 
@@ -3504,29 +3852,28 @@ class MainWindow(QMainWindow):
             /* ========== INPUTS ========== */
             QLineEdit, QTimeEdit, QComboBox {
                 background-color: white;
-                border: 2px solid #ccc;
-                border-radius: 5px;
-                padding: 8px;
-                font-size: 14px;
+                border: 1px solid #ccc;
+                border-radius: 2px;
+                padding: 6px;
+                font-size: 12px;
                 color: #333;
             }
 
             QLineEdit:focus, QTimeEdit:focus, QComboBox:focus {
-                border: 2px solid #4a90e2;
-                box-shadow: 0px 0px 8px rgba(74, 144, 226, 0.5);
+                border: 1px solid #4a90e2;
             }
 
             /* ========== MENU ========== */
             QMenu {
                 background-color: white;
-                border: 2px solid #e0e0e0;
-                border-radius: 6px;
+                border: 1px solid #e0e0e0;
+                border-radius: 2px;
                 padding: 5px;
             }
 
             QMenu::item {
                 padding: 8px 25px;
-                border-radius: 4px;
+                border-radius: 2px;
                 margin: 2px 5px;
             }
 
@@ -3541,6 +3888,18 @@ class MainWindow(QMainWindow):
                 margin: 5px 10px;
             }
         """)
+
+    def _setup_auto_update_timer(self):
+        self._update_timer = QTimer(self)
+        self._update_timer.timeout.connect(self._verificar_atualizacao_periodica)
+        self._update_timer.start(5 * 60 * 1000)
+        self._update_declined = False
+
+    def _verificar_atualizacao_periodica(self):
+        if self._update_declined:
+            self._update_timer.stop()
+            return
+        verificar_atualizacao_silenciosa(parent=self)
 
     def handle_single_click(self, clicked_date):
         date_str = clicked_date.toString("dd/MM/yyyy")
@@ -3635,10 +3994,30 @@ class MainWindow(QMainWindow):
                     ORDER BY instrutores.nome ASC
                 """, (curso_id,))
                 instrutores = cursor.fetchall()
+
+                ultimo_instrutor_id = None
+                cursor.execute("""
+                    SELECT instrutor_id FROM cursos_datas
+                    WHERE curso_id = ?
+                    ORDER BY data DESC, hora DESC
+                    LIMIT 1
+                """, (curso_id,))
+                ultimo = cursor.fetchone()
+                if ultimo:
+                    ultimo_instrutor_id = ultimo[0]
+
                 conn.close()
 
-                for iid, nome in instrutores:
+                indice_sugerido = 0
+                for idx, (iid, nome) in enumerate(instrutores):
                     instrutor_combo.addItem(nome, iid)
+                    if ultimo_instrutor_id and iid == ultimo_instrutor_id:
+                        indice_sugerido = idx + 1
+
+                if instrutores:
+                    if indice_sugerido >= len(instrutores):
+                        indice_sugerido = 0
+                    instrutor_combo.setCurrentIndex(indice_sugerido)
 
             curso_combo.currentIndexChanged.connect(carregar_instrutores_do_curso)
 
@@ -3842,6 +4221,8 @@ class MainWindow(QMainWindow):
                                triggered=self.abrir_associar_curso))
         menu.addAction(QAction(QIcon("cadastre-se.png"), "Cadastrar Curso", self,
                                triggered=self.abrir_cadastro_curso))
+        menu.addAction(QAction(QIcon("cadastre-se.png"), "Cadastrar Temas e Subtemas", self,
+                               triggered=self.abrir_cadastrar_temas_subtemas))
         menu.addAction(QAction(QIcon("cadastre-se.png"), "Cadastrar Instrutor", self,
                                triggered=self.abrir_cadastro_instrutor))
         menu.addAction(QAction(QIcon("editar.png"), "Editar/Excluir Curso", self,
@@ -3866,6 +4247,9 @@ class MainWindow(QMainWindow):
 
     def abrir_cadastro_curso(self):
         CadastroCursoWindow(self).exec_()
+
+    def abrir_cadastrar_temas_subtemas(self):
+        CadastrarTemasSubtemasWindow(self).exec_()
 
     def abrir_associar_curso(self):
         AssociarCursoWindow(self).exec_()
@@ -4237,6 +4621,73 @@ def verificar_atualizacao():
     loop.exec_()
 
     return True
+
+
+def verificar_atualizacao_silenciosa(parent=None):
+    if sys.platform != 'win32':
+        return
+
+    remote_txt = get_remote_version()
+    local_txt = get_local_version()
+
+    if not remote_txt:
+        return
+
+    remote = parse_version(remote_txt)
+    local = parse_version(local_txt)
+
+    if remote <= local:
+        return
+
+    resposta = QMessageBox.question(
+        parent,
+        "Atualização disponível",
+        f"Uma nova versão do sistema está disponível!\n\n"
+        f"Versão atual: {local}\nNova versão: {remote}\n\n"
+        f"Deseja baixar e instalar agora?",
+        QMessageBox.Yes | QMessageBox.No,
+        QMessageBox.Yes
+    )
+
+    if resposta != QMessageBox.Yes:
+        if parent and hasattr(parent, '_update_declined'):
+            parent._update_declined = True
+        return
+
+    try:
+        installer_url = get_latest_installer_url()
+    except Exception as e:
+        QMessageBox.critical(parent, "Erro", f"Não foi possível localizar o instalador:\n{e}")
+        return
+
+    progress = QProgressDialog("Preparando download...", "Cancelar", 0, 100)
+    progress.setWindowTitle("Baixando Atualização")
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumWidth(420)
+    progress.setValue(0)
+    progress.show()
+
+    thread = DownloadThread(installer_url)
+
+    def atualizar_barra(percent, mb_down, mb_total):
+        progress.setValue(percent)
+        progress.setLabelText(f"Baixando: {mb_down:.1f} MB de {mb_total:.1f} MB")
+
+    def ao_finalizar(caminho):
+        progress.close()
+        if sys.platform == 'win32':
+            import ctypes
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", caminho, None, None, 1)
+            sys.exit(0)
+
+    def ao_errar(mensagem):
+        progress.close()
+        QMessageBox.critical(parent, "Erro", f"Erro ao baixar instalador:\n{mensagem}")
+
+    thread.progress_update.connect(atualizar_barra)
+    thread.finished.connect(ao_finalizar)
+    thread.error.connect(ao_errar)
+    thread.start()
 
 
 if __name__ == '__main__':
