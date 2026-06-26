@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (
     QScrollArea, QDateEdit, QCheckBox, QTabWidget
 )
 import sqlite3
+import re
 from PyQt5.QtCore import Qt, QDate, QTime
 from PyQt5.QtGui import QTextCharFormat, QColor, QIcon
 from reportlab.lib.pagesizes import letter
@@ -1002,7 +1003,8 @@ class CadastroCursoWindow(QDialog):
             self.epc_input.blockSignals(False)
 
     def corrigir_nome_curso(self):
-        texto_corrigido = " ".join(self.curso_input.text().split()).strip()
+        texto = self.curso_input.text()
+        texto_corrigido = re.sub(r' +', ' ', texto)
         if self.curso_input.text() != texto_corrigido:
             self.curso_input.setText(texto_corrigido)
 
