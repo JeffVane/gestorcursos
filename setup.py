@@ -27,6 +27,10 @@ include_files = [
     # versão
     "version.txt",
 
+    # módulos auxiliares
+    "dialog_windows.py",
+    "database_utils.py",
+
     # plugins do Qt (necessário pro platform plugin "windows")
     (qt_plugins_path, "Qt5/plugins"),
 
@@ -39,12 +43,17 @@ build_exe_options = {
         "sqlite3", "PyQt5", "reportlab", "datetime", "os", "sys", "re",
         "tempfile", "smtplib", "email", "email.mime.text", "email.mime.multipart",
         "email.mime.image", "urllib.parse", "requests", "packaging",
+        "pandas", "chardet", "openpyxl", "xlrd",
     ],
     "includes": [
         "PyQt5.QtCore",
         "PyQt5.QtGui",
         "PyQt5.QtWidgets",
         "PyQt5.QtPrintSupport",
+        "pandas",
+        "chardet",
+        "openpyxl",
+        "xlrd",
     ],
     "include_files": include_files,
     # Excluir módulos não utilizados
@@ -62,7 +71,7 @@ base = "gui" if sys.platform == "win32" else None
 
 setup(
     name="GerenciamentoCursos",
-    version="1.0",
+    version="1.2.2",
     description="Sistema de Gerenciamento de Cursos e Instrutores",
     options={"build_exe": build_exe_options},
     executables=[

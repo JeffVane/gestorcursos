@@ -2,12 +2,12 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QWidget, QLabel, QLineEdit, QPushButton, QTableWidget,
     QTableWidgetItem, QDialog, QMessageBox, QListWidget, QListWidgetItem,
     QComboBox, QTimeEdit, QHBoxLayout, QCalendarWidget, QHeaderView, QFileDialog, QTextEdit,
-    QScrollArea, QDateEdit, QCheckBox, QTabWidget
+    QScrollArea, QDateEdit, QCheckBox, QTabWidget, QProgressBar, QFrame
 )
 import sqlite3
 import re
-from PyQt5.QtCore import Qt, QDate, QTime
-from PyQt5.QtGui import QTextCharFormat, QColor, QIcon
+from PyQt5.QtCore import Qt, QDate, QTime, QThread, pyqtSignal
+from PyQt5.QtGui import QTextCharFormat, QColor, QIcon, QFont
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from datetime import datetime
@@ -21,6 +21,11 @@ from PyQt5.QtGui import QRegularExpressionValidator
 import os
 import mimetypes
 from PyQt5.QtWidgets import QMenu, QAction
+import pandas as pd
+import chardet
+import codecs
+import unicodedata
+import traceback
 
 
 
@@ -1706,3 +1711,355 @@ class CadastrarTemasSubtemasWindow(QDialog):
             QMessageBox.information(self, "Sucesso", "Associações salvas com sucesso!")
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao salvar associações:\n{str(e)}")
+
+
+class ConversorWorkerThread(QThread):
+    update_progress = pyqtSignal(int)
+    update_log = pyqtSignal(str)
+    finished_processing = pyqtSignal(bool, str)
+
+    def __init__(self, arquivo):
+        super().__init__()
+        self.arquivo = arquivo
+        self.resultado_df = None
+        self.sucesso = False
+        self.mensagem = ""
+
+    def run(self):
+        try:
+            self.update_progress.emit(10)
+            df = self.processar_arquivo(self.arquivo)
+            self.resultado_df = df
+            self.update_progress.emit(100)
+            self.sucesso = True
+            self.mensagem = "Arquivo processado com sucesso!"
+        except Exception as e:
+            self.update_log.emit(f"Erro: {str(e)}")
+            self.mensagem = f"Erro ao processar arquivo: {str(e)}"
+
+        self.finished_processing.emit(self.sucesso, self.mensagem)
+
+    def processar_arquivo(self, arquivo):
+        with open(arquivo, 'rb') as f:
+            result = chardet.detect(f.read())
+
+        encoding = result['encoding']
+        self.update_log.emit(f"Encoding detectado: {encoding}")
+        self.update_progress.emit(20)
+
+        extensao = os.path.splitext(arquivo)[1].lower()
+
+        try:
+            if extensao in ['.csv']:
+                df = pd.read_csv(arquivo, encoding=encoding, dtype={'CPF': str})
+            elif extensao in ['.xlsx', '.xls']:
+                df = pd.read_excel(arquivo, dtype={'CPF': str})
+            else:
+                raise ValueError(f"Extensão não suportada: {extensao}")
+        except Exception as e:
+            raise Exception(f"Erro ao ler arquivo: {str(e)}")
+
+        self.update_progress.emit(40)
+
+        colunas = [col.strip() for col in df.columns]
+        tipo_arquivo = self.identificar_tipo_planilha(colunas)
+
+        if tipo_arquivo == "tipo1":
+            self.update_log.emit("Planilha identificada como Tipo 1 (Nome, Sobrenome, Email, Check-in, CPF)")
+
+            mapeamento = {}
+            for col in df.columns:
+                col_lower = col.lower().strip()
+                if "nome" == col_lower and "sobrenome" not in col_lower:
+                    mapeamento[col] = "Nome"
+                elif "sobrenome" == col_lower:
+                    mapeamento[col] = "Sobrenome"
+                elif "email" == col_lower or "e-mail" == col_lower:
+                    mapeamento[col] = "Email"
+                elif "check" in col_lower:
+                    mapeamento[col] = "Check-in"
+                elif "cpf" == col_lower:
+                    mapeamento[col] = "CPF"
+
+            if mapeamento:
+                df = df.rename(columns=mapeamento)
+
+            colunas_faltantes = [col for col in ["Nome", "Sobrenome", "CPF"] if col not in df.columns]
+            if colunas_faltantes:
+                raise Exception(f"Colunas obrigatórias faltando: {', '.join(colunas_faltantes)}")
+
+            df['NOME / CPF'] = df['Nome'].astype(str) + ' ' + df['Sobrenome'].astype(str)
+
+        elif tipo_arquivo == "tipo2":
+            self.update_log.emit("Planilha identificada como Tipo 2 (NOME e CPF)")
+
+            mapeamento = {}
+            for col in df.columns:
+                col_upper = col.upper().strip()
+                if "NOME" == col_upper:
+                    mapeamento[col] = "NOME"
+                elif "CPF" == col_upper:
+                    mapeamento[col] = "CPF"
+
+            if mapeamento:
+                df = df.rename(columns=mapeamento)
+
+            colunas_faltantes = [col for col in ["NOME", "CPF"] if col not in df.columns]
+            if colunas_faltantes:
+                raise Exception(f"Colunas obrigatórias faltando: {', '.join(colunas_faltantes)}")
+
+            df['NOME / CPF'] = df['NOME'].astype(str)
+
+        else:
+            raise Exception(
+                "Formato de planilha não reconhecido. Necessário Tipo 1 (Nome, Sobrenome, Email, Check-in, CPF) ou Tipo 2 (NOME, CPF)")
+
+        self.update_progress.emit(70)
+
+        if "CPF" in df.columns:
+            try:
+                df["CPF"] = df["CPF"].astype(str).str.replace(r'\D', '', regex=True)
+                df["CPF"] = df["CPF"].apply(lambda x: x.zfill(11) if x and x != 'nan' else x)
+                self.update_log.emit("CPFs formatados com 11 dígitos (zeros à esquerda preservados)")
+            except Exception as e:
+                self.update_log.emit(f"Aviso: Não foi possível formatar a coluna CPF: {str(e)}")
+
+        def remover_acentos(texto):
+            if isinstance(texto, str):
+                nfkd = unicodedata.normalize('NFKD', texto)
+                return ''.join([c for c in nfkd if not unicodedata.combining(c)])
+            return texto
+
+        df['NOME / CPF'] = df['NOME / CPF'].apply(remover_acentos)
+
+        if "CPF" in df.columns:
+            df['NOME / CPF'] = df['NOME / CPF'].astype(str) + ',' + df['CPF'].astype(str)
+        else:
+            raise Exception("Coluna CPF não encontrada para montar NOME / CPF.")
+
+        self.update_log.emit("Processamento finalizado. Pronto para salvar.")
+
+        df_final = df[['NOME / CPF']]
+
+        return df_final
+
+    def identificar_tipo_planilha(self, colunas):
+        colunas_lower = [col.lower() for col in colunas]
+        colunas_upper = [col.upper() for col in colunas]
+        colunas_original = [col for col in colunas]
+
+        if ("nome" in colunas_lower and
+                ("sobrenome" in colunas_lower) and
+                any(col in colunas_lower for col in ["email", "e-mail"]) and
+                any("check" in col.lower() for col in colunas_original) and
+                "cpf" in colunas_lower):
+            return "tipo1"
+
+        elif "NOME" in colunas_upper and "CPF" in colunas_upper:
+            return "tipo2"
+
+        elif any("NOME" == col.upper() for col in colunas_original) and any(
+                "CPF" == col.upper() for col in colunas_original):
+            return "tipo2"
+
+        elif any("nome" == col.lower() for col in colunas_original) and any(
+                "cpf" == col.lower() for col in colunas_original):
+            if any("sobrenome" == col.lower() for col in colunas_original):
+                return "tipo1"
+            else:
+                return "tipo2"
+
+        return "desconhecido"
+
+
+class ConversorPlanilhasWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Conversor de Planilhas para CSV UTF-8 BOM")
+        self.setGeometry(100, 100, 800, 600)
+        self.arquivo_selecionado = ""
+        self.inicializar_interface()
+
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f0f2f5;
+            }
+            QLabel {
+                font-size: 13px;
+                color: #333333;
+            }
+        """)
+
+    def inicializar_interface(self):
+        layout_principal = QVBoxLayout(self)
+        layout_principal.setContentsMargins(20, 20, 20, 20)
+        layout_principal.setSpacing(15)
+
+        titulo = QLabel("Conversor de Planilhas para CSV UTF-8 BOM")
+        titulo.setAlignment(Qt.AlignCenter)
+        titulo.setStyleSheet("font-size: 22px; font-weight: bold; color: #333333; margin-bottom: 15px;")
+        layout_principal.addWidget(titulo)
+
+        frame_selecao = QFrame()
+        frame_selecao.setStyleSheet("QFrame { background-color: white; border-radius: 8px; border: 1px solid #dddddd; }")
+        layout_selecao = QVBoxLayout(frame_selecao)
+
+        label_selecao = QLabel("Selecione a planilha para conversão")
+        label_selecao.setStyleSheet("font-size: 16px; font-weight: bold; color: #333333;")
+        layout_selecao.addWidget(label_selecao)
+
+        info_tipos = QLabel("O programa detectará automaticamente se a planilha é:\n"
+                            "• Tipo 1: Nome, Sobrenome, Email, Check-in, CPF\n"
+                            "• Tipo 2: NOME, CPF")
+        info_tipos.setStyleSheet("font-size: 14px; color: #555555;")
+        layout_selecao.addWidget(info_tipos)
+
+        layout_arquivo = QHBoxLayout()
+
+        btn_selecionar = QPushButton("Selecionar Planilha")
+        btn_selecionar.clicked.connect(self.selecionar_arquivo)
+        btn_selecionar.setStyleSheet("""
+            QPushButton {
+                background-color: #4a86e8;
+                color: white;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover { background-color: #3a76d8; }
+            QPushButton:pressed { background-color: #2a66c8; }
+        """)
+        layout_arquivo.addWidget(btn_selecionar)
+
+        self.txt_arquivo = QTextEdit()
+        self.txt_arquivo.setReadOnly(True)
+        self.txt_arquivo.setMaximumHeight(40)
+        self.txt_arquivo.setPlaceholderText("Nenhum arquivo selecionado")
+        layout_arquivo.addWidget(self.txt_arquivo)
+
+        layout_selecao.addLayout(layout_arquivo)
+        layout_principal.addWidget(frame_selecao)
+
+        frame_processo = QFrame()
+        frame_processo.setStyleSheet("QFrame { background-color: white; border-radius: 8px; border: 1px solid #dddddd; }")
+        layout_processo = QVBoxLayout(frame_processo)
+
+        btn_converter = QPushButton("Converter Planilha")
+        btn_converter.clicked.connect(self.iniciar_processamento)
+        btn_converter.setMinimumHeight(50)
+        btn_converter.setStyleSheet("""
+            QPushButton {
+                background-color: #4a86e8;
+                color: white;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover { background-color: #3a76d8; }
+            QPushButton:pressed { background-color: #2a66c8; }
+        """)
+        layout_processo.addWidget(btn_converter)
+
+        layout_processo.addWidget(QLabel("Progresso:"))
+        self.barra_progresso = QProgressBar()
+        self.barra_progresso.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #dddddd;
+                border-radius: 4px;
+                text-align: center;
+                height: 15px;
+            }
+            QProgressBar::chunk {
+                background-color: #4a86e8;
+                border-radius: 3px;
+            }
+        """)
+        layout_processo.addWidget(self.barra_progresso)
+
+        layout_principal.addWidget(frame_processo)
+
+        frame_log = QFrame()
+        frame_log.setStyleSheet("QFrame { background-color: white; border-radius: 8px; border: 1px solid #dddddd; }")
+        layout_log = QVBoxLayout(frame_log)
+
+        label_log = QLabel("Log de Processamento")
+        label_log.setStyleSheet("font-size: 16px; font-weight: bold; color: #333333;")
+        layout_log.addWidget(label_log)
+
+        self.txt_log = QTextEdit()
+        self.txt_log.setReadOnly(True)
+        self.txt_log.setStyleSheet("""
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                padding: 5px;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 13px;
+            }
+        """)
+        layout_log.addWidget(self.txt_log)
+
+        layout_principal.addWidget(frame_log)
+
+    def selecionar_arquivo(self):
+        arquivo, _ = QFileDialog.getOpenFileName(self, "Selecionar Planilha", "",
+                                                 "Planilhas (*.xlsx *.xls *.csv);;Todos os Arquivos (*)")
+
+        if arquivo:
+            self.arquivo_selecionado = arquivo
+            self.txt_arquivo.clear()
+            self.txt_arquivo.append(arquivo)
+            self.adicionar_log(f"Arquivo selecionado: {os.path.basename(arquivo)}")
+
+    def iniciar_processamento(self):
+        if not self.arquivo_selecionado:
+            QMessageBox.warning(self, "Aviso", "Nenhum arquivo selecionado!")
+            return
+
+        self.txt_log.clear()
+        self.adicionar_log(f"Iniciando processamento do arquivo: {os.path.basename(self.arquivo_selecionado)}")
+        self.barra_progresso.setValue(0)
+
+        self.thread_worker = ConversorWorkerThread(self.arquivo_selecionado)
+        self.thread_worker.update_progress.connect(self.atualizar_progresso)
+        self.thread_worker.update_log.connect(self.adicionar_log)
+        self.thread_worker.finished_processing.connect(self.processamento_concluido)
+        self.thread_worker.start()
+
+    def atualizar_progresso(self, valor):
+        self.barra_progresso.setValue(valor)
+
+    def adicionar_log(self, mensagem):
+        hora = datetime.now().strftime("%H:%M:%S")
+        self.txt_log.append(f"[{hora}] {mensagem}")
+        cursor = self.txt_log.textCursor()
+        cursor.movePosition(cursor.End)
+        self.txt_log.setTextCursor(cursor)
+
+    def processamento_concluido(self, sucesso, mensagem):
+        if sucesso:
+            nome_sugerido = os.path.splitext(os.path.basename(self.arquivo_selecionado))[0] + "_processado.csv"
+
+            caminho_saida, _ = QFileDialog.getSaveFileName(
+                self,
+                "Salvar Arquivo CSV",
+                nome_sugerido,
+                "Arquivos CSV (*.csv)"
+            )
+
+            if caminho_saida:
+                try:
+                    with codecs.open(caminho_saida, 'w', encoding='utf-8-sig') as f:
+                        self.thread_worker.resultado_df.to_csv(f, index=False, sep=';')
+                    QMessageBox.information(self, "Concluído", f"Arquivo salvo como:\n{caminho_saida}")
+                    self.adicionar_log(f"Arquivo salvo como: {caminho_saida}")
+                except Exception as e:
+                    QMessageBox.warning(self, "Erro ao Salvar", str(e))
+                    self.adicionar_log(f"Erro ao salvar arquivo: {str(e)}")
+            else:
+                self.adicionar_log("Salvamento cancelado pelo usuário.")
+        else:
+            QMessageBox.warning(self, "Erro", mensagem)

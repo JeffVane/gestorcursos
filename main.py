@@ -30,7 +30,8 @@ import sys
 # Importar classes das janelas de diálogo
 from dialog_windows import (
     CadastroInstrutorWindow, EditarInstrutorWindow, CadastroCursoWindow,
-    AssociarCursoWindow, ExcluirInstrutorWindow, CadastrarTemasSubtemasWindow
+    AssociarCursoWindow, ExcluirInstrutorWindow, CadastrarTemasSubtemasWindow,
+    ConversorPlanilhasWindow
 )
 
 # Importar funções do banco de dados
@@ -3569,6 +3570,7 @@ class MainWindow(QMainWindow):
         # Configuracoes
         menu_config = menubar.addMenu("Configurações")
         menu_config.addAction(QAction("⚙️ Configurar Email (SMTP)", self, triggered=self.abrir_config_email))
+        menu_config.addAction(QAction("📊 Conversor de Planilhas", self, triggered=self.abrir_conversor_planilhas))
 
         # =========================
         # CONTEUDO PRINCIPAL
@@ -4240,6 +4242,8 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction(QAction(QIcon("conectar.png"), "Configurar Email (SMTP)", self,
                                triggered=self.abrir_config_email))
+        menu.addAction(QAction(QIcon("curso.png"), "Conversor de Planilhas", self,
+                               triggered=self.abrir_conversor_planilhas))
         return menu
 
     def abrir_cadastro_instrutor(self):
@@ -4274,6 +4278,9 @@ class MainWindow(QMainWindow):
 
     def abrir_config_email(self):
         ConfigEmailWindow(self).exec_()
+
+    def abrir_conversor_planilhas(self):
+        ConversorPlanilhasWindow(self).exec_()
 
 
 # Janela de Configuração de Email (SMTP)
