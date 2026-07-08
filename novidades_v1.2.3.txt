@@ -1,0 +1,4 @@
+Novidades da versão 1.2.3:
+
+- Interface da aba de e-mails reformulada com visual profissional
+- Correções e melhorias diversas

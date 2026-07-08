@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QCalendarWidget, QDialog, QMessageBox,
     QListWidget, QListWidgetItem, QMenu, QAction, QComboBox, QTimeEdit,
     QHBoxLayout, QHeaderView, QLineEdit, QFileDialog, QTabWidget, QCheckBox,
-    QInputDialog, QPlainTextEdit, QSpinBox, QProgressDialog
+    QInputDialog, QPlainTextEdit, QSpinBox, QProgressDialog, QSplitter, QGroupBox, QSizePolicy
 )
 import sqlite3
 from PyQt5.QtCore import Qt, QDate, QTime, pyqtSignal, QThread, QEventLoop, QEvent, QPoint, QRect, QTimer
@@ -24,14 +24,37 @@ import requests
 from packaging.version import Version, InvalidVersion
 
 
+# =========================
+# CONSTANTES GLOBAIS
+# =========================
+DB_PATH = r'\\srvsql\Banco Cursos\instrutores.db'
+
+# Paleta de cores para EnviarEmailsWindow
+COLORS = {
+    'bg': '#f5f5f5',        # Fundo geral
+    'surface': '#ffffff',   # Superfície (painéis, inputs)
+    'primary': '#2563eb',   # Cor primária
+    'success': '#16a34a',   # Sucesso (botão enviar)
+    'success_hover': '#15803d',
+    'destructive': '#dc2626',
+    'border': '#d1d5db',
+    'border_light': '#e5e7eb',
+    'text': '#1f2937',
+    'text_muted': '#6b7280',
+    'hover': '#e5e7eb',
+    'badge_bg': '#eff6ff',
+    'badge_text': '#1d4ed8',
+    'badge_border': '#bfdbfe',
+}
+
+
 
 import sys
 
 # Importar classes das janelas de diálogo
 from dialog_windows import (
     CadastroInstrutorWindow, EditarInstrutorWindow, CadastroCursoWindow,
-    AssociarCursoWindow, ExcluirInstrutorWindow, CadastrarTemasSubtemasWindow,
-    ConversorPlanilhasWindow
+    ExcluirInstrutorWindow, ConversorPlanilhasWindow
 )
 
 # Importar funções do banco de dados
@@ -2232,13 +2255,10 @@ class DetalhesProgramacaoWindow(QDialog):
         self.prog_id = prog_id
         self.curso_id = curso_id
         self.data = data
-        self._imagens = {}
-        self._img_counter = 0
-        self._template_atual = None
-        self._template_modificado = False
         self.setWindowIcon(QIcon("agenda.png"))
         self.setWindowTitle("Detalhes da Programação")
-        self.setGeometry(250, 250, 1100, 650)
+        self.setMinimumSize(600, 500)
+        self.setGeometry(250, 250, 800, 550)
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
 
         layout = QVBoxLayout()
@@ -2256,16 +2276,6 @@ class DetalhesProgramacaoWindow(QDialog):
         self.tab_alunos = QWidget()
         self.setup_tab_alunos()
         self.tabs.addTab(self.tab_alunos, "Alunos")
-
-        # === Aba 3: Enviar Emails ===
-        self.tab_emails = QWidget()
-        self.setup_tab_emails()
-        self.tabs.addTab(self.tab_emails, "Enviar Emails")
-
-        # === Aba 4: Logs ===
-        self.tab_logs = QWidget()
-        self.setup_tab_logs()
-        self.tabs.addTab(self.tab_logs, "Logs")
 
         self.setLayout(layout)
         self.carregar_dados()
@@ -2309,1031 +2319,69 @@ class DetalhesProgramacaoWindow(QDialog):
     def setup_tab_alunos(self):
         layout = QVBoxLayout()
 
-        alunos_group = QGroupBox("Alunos deste Curso")
-        alunos_layout = QVBoxLayout()
+        # === Formulário de cadastro ===
+        form_group = QGroupBox("Cadastrar Aluno")
+        form_layout = QGridLayout()
 
-        btn_alunos = QPushButton("Gerenciar Alunos")
-        btn_alunos.setStyleSheet("padding: 6px 16px; font-size: 12px; min-height: 28px;")
-        btn_alunos.setFixedWidth(200)
-        btn_alunos.clicked.connect(self.abrir_gerenciar_alunos)
-        alunos_layout.addWidget(btn_alunos)
+        form_layout.addWidget(QLabel("Nome:"), 0, 0)
+        self.aluno_nome_input = QLineEdit()
+        self.aluno_nome_input.setPlaceholderText("Nome do aluno")
+        form_layout.addWidget(self.aluno_nome_input, 0, 1)
 
-        self.alunos_resumo = QLabel("Carregando...")
-        self.alunos_resumo.setStyleSheet("color: #666; padding: 8px;")
-        alunos_layout.addWidget(self.alunos_resumo)
+        form_layout.addWidget(QLabel("Faculdade/Universidade:"), 1, 0)
+        self.aluno_faculdade_input = QLineEdit()
+        self.aluno_faculdade_input.setPlaceholderText("Faculdade ou Universidade")
+        form_layout.addWidget(self.aluno_faculdade_input, 1, 1)
 
-        alunos_group.setLayout(alunos_layout)
-        layout.addWidget(alunos_group)
+        form_layout.addWidget(QLabel("Documento:"), 2, 0)
+        doc_layout = QHBoxLayout()
+        self.aluno_file_label = QLabel("Nenhum arquivo selecionado")
+        self.aluno_file_label.setStyleSheet("color: #666;")
+        doc_layout.addWidget(self.aluno_file_label)
+        self.aluno_file_button = QPushButton("Selecionar Arquivo")
+        self.aluno_file_button.clicked.connect(self.selecionar_arquivo_aluno)
+        doc_layout.addWidget(self.aluno_file_button)
+        form_layout.addLayout(doc_layout, 2, 1)
 
-        layout.addStretch()
-        self.tab_alunos.setLayout(layout)
+        self.aluno_cadastrar_button = QPushButton("Cadastrar Aluno")
+        self.aluno_cadastrar_button.clicked.connect(self.cadastrar_aluno)
+        form_layout.addWidget(self.aluno_cadastrar_button, 3, 1, Qt.AlignRight)
 
-    def _criar_toolbar(self, editor):
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(4)
+        form_group.setLayout(form_layout)
+        layout.addWidget(form_group)
 
-        btn_bold = QPushButton("B")
-        btn_bold.setFixedSize(26, 26)
-        btn_bold.setToolTip("Negrito")
-        btn_bold.setStyleSheet("font-weight: bold; font-size: 13px; padding: 0;")
-        btn_bold.clicked.connect(lambda: self._format_text(editor, "bold"))
-        toolbar.addWidget(btn_bold)
+        # === Tabela de alunos ===
+        table_label = QLabel("Alunos Cadastrados")
+        table_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #4a90e2; padding: 8px 0;")
+        layout.addWidget(table_label)
 
-        btn_italic = QPushButton("I")
-        btn_italic.setFixedSize(26, 26)
-        btn_italic.setToolTip("Itálico")
-        btn_italic.setStyleSheet("font-style: italic; font-size: 13px; padding: 0;")
-        btn_italic.clicked.connect(lambda: self._format_text(editor, "italic"))
-        toolbar.addWidget(btn_italic)
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("Pesquisar:"))
+        self.search_alunos_input = QLineEdit()
+        self.search_alunos_input.setPlaceholderText("Digite nome, faculdade ou documento...")
+        self.search_alunos_input.textChanged.connect(self.aplicar_filtro_alunos)
+        search_layout.addWidget(self.search_alunos_input)
+        layout.addLayout(search_layout)
 
-        btn_underline = QPushButton("U")
-        btn_underline.setFixedSize(26, 26)
-        btn_underline.setToolTip("Sublinhado")
-        btn_underline.setStyleSheet("text-decoration: underline; font-size: 13px; padding: 0;")
-        btn_underline.clicked.connect(lambda: self._format_text(editor, "underline"))
-        toolbar.addWidget(btn_underline)
-
-        sep1 = QFrame()
-        sep1.setFrameShape(QFrame.VLine)
-        sep1.setFixedWidth(1)
-        toolbar.addWidget(sep1)
-
-        heading_combo = QComboBox()
-        heading_combo.setFixedHeight(26)
-        heading_combo.setMinimumWidth(80)
-        heading_combo.setStyleSheet("font-size: 12px; padding: 2px 8px;")
-        heading_combo.addItems(["Normal", "H1", "H2", "H3"])
-        heading_combo.currentTextChanged.connect(
-            lambda t: self._format_heading(editor, {"Normal": 0, "H1": 1, "H2": 2, "H3": 3}.get(t, 0))
-        )
-        toolbar.addWidget(heading_combo)
-
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.VLine)
-        sep2.setFixedWidth(1)
-        toolbar.addWidget(sep2)
-
-        btn_align_left = QPushButton("≡")
-        btn_align_left.setFixedSize(26, 26)
-        btn_align_left.setToolTip("Alinhar à Esquerda")
-        btn_align_left.setStyleSheet("font-size: 13px; padding: 0;")
-        btn_align_left.clicked.connect(lambda: self._format_align(editor, "left"))
-        toolbar.addWidget(btn_align_left)
-
-        btn_align_center = QPushButton("≡")
-        btn_align_center.setFixedSize(26, 26)
-        btn_align_center.setToolTip("Centralizar")
-        btn_align_center.setStyleSheet("font-size: 13px; padding: 0;")
-        btn_align_center.clicked.connect(lambda: self._format_align(editor, "center"))
-        toolbar.addWidget(btn_align_center)
-
-        btn_align_right = QPushButton("≡")
-        btn_align_right.setFixedSize(26, 26)
-        btn_align_right.setToolTip("Alinhar à Direita")
-        btn_align_right.setStyleSheet("font-size: 13px; padding: 0;")
-        btn_align_right.clicked.connect(lambda: self._format_align(editor, "right"))
-        toolbar.addWidget(btn_align_right)
-
-        sep3 = QFrame()
-        sep3.setFrameShape(QFrame.VLine)
-        sep3.setFixedWidth(1)
-        toolbar.addWidget(sep3)
-
-        btn_color = QPushButton("A")
-        btn_color.setFixedSize(26, 26)
-        btn_color.setToolTip("Cor da Fonte")
-        btn_color.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; padding: 0; color: #e74c3c; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; } QPushButton:hover { background: #e0e0e0; }")
-        btn_color.clicked.connect(lambda: self._escolher_cor(editor))
-        toolbar.addWidget(btn_color)
-
-        btn_bg = QPushButton("■")
-        btn_bg.setFixedSize(26, 26)
-        btn_bg.setToolTip("Cor de Fundo (Realçar)")
-        btn_bg.setStyleSheet("QPushButton { font-size: 16px; padding: 0; color: #f1c40f; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; } QPushButton:hover { background: #e0e0e0; }")
-        btn_bg.clicked.connect(lambda: self._escolher_cor_fundo(editor))
-        toolbar.addWidget(btn_bg)
-
-        sep4 = QFrame()
-        sep4.setFrameShape(QFrame.VLine)
-        sep4.setFixedWidth(1)
-        toolbar.addWidget(sep4)
-
-        btn_bullet = QPushButton("•")
-        btn_bullet.setFixedSize(26, 26)
-        btn_bullet.setToolTip("Lista com Marcadores")
-        btn_bullet.setStyleSheet("font-size: 14px; padding: 0;")
-        btn_bullet.clicked.connect(lambda: self._insert_list(editor, "bullet"))
-        toolbar.addWidget(btn_bullet)
-
-        btn_numbered = QPushButton("1.")
-        btn_numbered.setFixedSize(26, 26)
-        btn_numbered.setToolTip("Lista Numerada")
-        btn_numbered.setStyleSheet("font-size: 12px; padding: 0;")
-        btn_numbered.clicked.connect(lambda: self._insert_list(editor, "numbered"))
-        toolbar.addWidget(btn_numbered)
-
-        sep5 = QFrame()
-        sep5.setFrameShape(QFrame.VLine)
-        sep5.setFixedWidth(1)
-        toolbar.addWidget(sep5)
-
-        btn_link = QPushButton("🔗")
-        btn_link.setFixedSize(28, 26)
-        btn_link.setToolTip("Inserir Link")
-        btn_link.setStyleSheet("font-size: 12px; padding: 0;")
-        btn_link.clicked.connect(lambda: self._inserir_link(editor))
-        toolbar.addWidget(btn_link)
-
-        btn_image = QPushButton("🖼")
-        btn_image.setFixedSize(28, 26)
-        btn_image.setToolTip("Inserir Imagem")
-        btn_image.setStyleSheet("font-size: 12px; padding: 0;")
-        btn_image.clicked.connect(lambda: self._inserir_imagem(editor))
-        toolbar.addWidget(btn_image)
-
-        btn_button = QPushButton("▣")
-        btn_button.setFixedSize(26, 26)
-        btn_button.setToolTip("Inserir Botão")
-        btn_button.setStyleSheet("font-size: 13px; padding: 0;")
-        btn_button.clicked.connect(lambda: self._inserir_botao(editor))
-        toolbar.addWidget(btn_button)
-
-        sep6 = QFrame()
-        sep6.setFrameShape(QFrame.VLine)
-        sep6.setFixedWidth(1)
-        toolbar.addWidget(sep6)
-
-        variaveis_combo = QComboBox()
-        variaveis_combo.setFixedHeight(26)
-        variaveis_combo.setMinimumWidth(140)
-        variaveis_combo.setStyleSheet("font-size: 12px; padding: 2px 8px;")
-        variaveis_combo.addItem("Inserir Variável...")
-        variaveis_combo.addItems([
-            "{{nome_curso}}", "{{data_curso}}", "{{hora_curso}}",
-            "{{nome_instrutor}}", "{{carga_horaria}}", "{{tema_curso}}",
+        self.tabela_alunos = QTableWidget()
+        self.tabela_alunos.setColumnCount(5)
+        self.tabela_alunos.setHorizontalHeaderLabels([
+            "ID", "Nome", "Faculdade/Universidade", "Documento", "Ações"
         ])
-        variaveis_combo.currentIndexChanged.connect(lambda idx, e=editor, v=variaveis_combo: self._inserir_variavel(e, v, idx))
-        toolbar.addWidget(variaveis_combo)
-
-        toolbar.addStretch()
-        return toolbar
-
-    def _secao_email(self, titulo, editor, min_height=80):
-        group = QGroupBox(titulo)
-        group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 12px; margin-top: 6px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }")
-        layout = QVBoxLayout(group)
-        layout.setContentsMargins(6, 6, 6, 4)
-        layout.setSpacing(2)
-        toolbar = self._criar_toolbar(editor)
-        layout.addLayout(toolbar)
-        editor.setMinimumHeight(min_height)
-        editor.textChanged.connect(self.atualizar_previa)
-        editor.textChanged.connect(self._marcar_template_modificado)
-        editor.edit_button_signal.connect(lambda act, e=editor: self._acao_botao_context_menu(e, act))
-        layout.addWidget(editor)
-        return group
-
-    def _editor_atual(self):
-        for e in [self.email_cabecalho, self.email_corpo, self.email_rodape]:
-            if e.hasFocus():
-                return e
-        return self.email_corpo
-
-    def setup_tab_emails(self):
-        layout = QHBoxLayout()
-
-        # Painel esquerdo: Editor
-        editor_panel = QWidget()
-        editor_layout = QVBoxLayout()
-        editor_panel.setLayout(editor_layout)
-
-        # Assunto
-        editor_layout.addWidget(QLabel("Assunto:"))
-        self.email_assunto = QLineEdit()
-        self.email_assunto.setPlaceholderText("Ex: Lembrete - Curso amanhã às 08:00")
-        self.email_assunto.textChanged.connect(self._marcar_template_modificado)
-        editor_layout.addWidget(self.email_assunto)
-
-        # Emails (campo para colar emails)
-        editor_layout.addWidget(QLabel("Emails dos Destinatários (um por linha ou separados por vírgula/ponto e vírgula):"))
-        self.email_destinatarios = QTextEdit()
-        self.email_destinatarios.setPlaceholderText("exemplo@email.com\noutro@email.com\nterceiro@email.com")
-        self.email_destinatarios.setMaximumHeight(60)
-        self.email_destinatarios.setStyleSheet("font-family: monospace; font-size: 11px;")
-        editor_layout.addWidget(self.email_destinatarios)
-
-        # Seções do email
-        self.email_cabecalho = EmailEditor()
-        self.email_cabecalho.setPlaceholderText("Cabeçalho do email...")
-        editor_layout.addWidget(self._secao_email("Cabeçalho", self.email_cabecalho, 80))
-
-        self.email_corpo = EmailEditor()
-        self.email_corpo.setPlaceholderText("Corpo principal do email...")
-        editor_layout.addWidget(self._secao_email("Corpo Principal", self.email_corpo, 150))
-
-        self.email_rodape = EmailEditor()
-        self.email_rodape.setPlaceholderText("Rodapé do email...")
-        editor_layout.addWidget(self._secao_email("Rodapé", self.email_rodape, 80))
-
-        # Botões de ação (na horizontal)
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(6)
-
-        btn_previa = QPushButton("👁 Prévia")
-        btn_previa.setFixedHeight(28)
-        btn_previa.setStyleSheet("padding: 4px 12px; font-size: 12px;")
-        btn_previa.clicked.connect(self.atualizar_previa)
-        btn_layout.addWidget(btn_previa)
-
-        btn_limpar = QPushButton("🗑 Limpar")
-        btn_limpar.setFixedHeight(28)
-        btn_limpar.setStyleSheet("padding: 4px 12px; font-size: 12px;")
-        btn_limpar.clicked.connect(self.limpar_editor)
-        btn_layout.addWidget(btn_limpar)
-
-        # Templates
-        btn_salvar_template = QPushButton("💾 Salvar")
-        btn_salvar_template.setFixedHeight(28)
-        btn_salvar_template.setStyleSheet("padding: 2px 10px; font-size: 11px;")
-        btn_salvar_template.clicked.connect(self.salvar_template)
-        btn_layout.addWidget(btn_salvar_template)
-
-        btn_carregar_template = QPushButton("📁 Carregar")
-        btn_carregar_template.setFixedHeight(28)
-        btn_carregar_template.setStyleSheet("padding: 2px 10px; font-size: 11px;")
-        btn_carregar_template.clicked.connect(self.carregar_template)
-        btn_layout.addWidget(btn_carregar_template)
-
-        btn_salvar_alteracoes = QPushButton("💾 Salvar Alterações")
-        self.btn_salvar_alteracoes = btn_salvar_alteracoes
-        btn_salvar_alteracoes.setFixedHeight(28)
-        btn_salvar_alteracoes.setStyleSheet("padding: 2px 10px; font-size: 11px;")
-        btn_salvar_alteracoes.clicked.connect(self.sobrescrever_template)
-        btn_salvar_alteracoes.setEnabled(False)
-        btn_layout.addWidget(btn_salvar_alteracoes)
-
-        btn_html = QPushButton("</> HTML")
-        btn_html.setFixedHeight(28)
-        btn_html.setStyleSheet("padding: 2px 10px; font-size: 11px;")
-        btn_html.clicked.connect(self.editar_html)
-        btn_layout.addWidget(btn_html)
-
-        btn_layout.addStretch()
-
-        btn_layout.addWidget(QLabel("Intervalo:"))
-        self.intervalo_spin = QSpinBox()
-        self.intervalo_spin.setRange(1, 60)
-        self.intervalo_spin.setValue(5)
-        self.intervalo_spin.setSuffix(" seg")
-        self.intervalo_spin.setFixedWidth(80)
-        self.intervalo_spin.setFixedHeight(28)
-        self.intervalo_spin.setStyleSheet("font-size: 12px;")
-        btn_layout.addWidget(self.intervalo_spin)
-
-        self.btn_enviar = QPushButton("📧 Enviar")
-        self.btn_enviar.setFixedHeight(30)
-        self.btn_enviar.setStyleSheet("background-color: #27ae60; color: white; padding: 4px 16px; font-weight: bold; font-size: 12px; border-radius: 4px;")
-        self.btn_enviar.clicked.connect(self.enviar_emails)
-        btn_layout.addWidget(self.btn_enviar)
-
-        editor_layout.addLayout(btn_layout)
-
-        # Painel direito: Prévia
-        preview_panel = QWidget()
-        preview_panel.setMinimumWidth(480)
-        preview_layout = QVBoxLayout()
-        preview_panel.setLayout(preview_layout)
-
-        preview_layout.addWidget(QLabel("Prévia do Email:"))
-
-        self.email_previa = QTextEdit()
-        self.email_previa.setReadOnly(True)
-        self.email_previa.setMinimumHeight(500)
-        self.email_previa.setStyleSheet("background-color: #fafafa; border: 1px solid #ddd;")
-        preview_layout.addWidget(self.email_previa, 1)
-
-        self.email_info = QLabel("Carregando...")
-        self.email_info.setStyleSheet("color: #666; font-size: 12px; padding: 10px; background: #f0f0f0; border-radius: 4px;")
-        self.email_info.setWordWrap(True)
-        preview_layout.addWidget(self.email_info)
-
-        layout.addWidget(editor_panel, 2)
-        layout.addWidget(preview_panel, 3)
-
-        self.tab_emails.setLayout(layout)
-        self.carregar_info_previa()
-
-    def setup_tab_logs(self):
-        layout = QVBoxLayout()
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setPlaceholderText("Logs do sistema aparecerão aqui...")
-        layout.addWidget(self.log_text)
-        self.tab_logs.setLayout(layout)
-
-    def log(self, mensagem):
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.append(f"[{timestamp}] {mensagem}")
-        # Auto-muda para aba de logs
-        self.tabs.setCurrentWidget(self.tab_logs)
-
-    def _format_text(self, editor, fmt):
-        cursor = editor.textCursor()
-        if fmt == "bold":
-            editor.setFontWeight(75 if cursor.charFormat().fontWeight() < 75 else 50)
-        elif fmt == "italic":
-            editor.setFontItalic(not cursor.charFormat().fontItalic())
-        elif fmt == "underline":
-            editor.setFontUnderline(not cursor.charFormat().fontUnderline())
-        editor.setFocus()
-
-    def _format_heading(self, editor, level):
-        if level == 0:
-            editor.setFontPointSize(12)
-        elif level == 1:
-            editor.setFontPointSize(24)
-        elif level == 2:
-            editor.setFontPointSize(18)
-        elif level == 3:
-            editor.setFontPointSize(14)
-        editor.setFocus()
-
-    def _format_align(self, editor, align):
-        if align == "left":
-            editor.setAlignment(Qt.AlignLeft)
-        elif align == "center":
-            editor.setAlignment(Qt.AlignCenter)
-        elif align == "right":
-            editor.setAlignment(Qt.AlignRight)
-
-    def _escolher_cor(self, editor):
-        from PyQt5.QtGui import QColor
-        from PyQt5.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(QColor("#e74c3c"), self, "Escolher Cor da Fonte")
-        if color.isValid():
-            cursor = editor.textCursor()
-            fmt = cursor.charFormat()
-            fmt.setForeground(color)
-            cursor.setCharFormat(fmt)
-            editor.setFocus()
-
-    def _escolher_cor_fundo(self, editor):
-        from PyQt5.QtGui import QColor
-        from PyQt5.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(QColor("#f1c40f"), self, "Escolher Cor de Fundo")
-        if color.isValid():
-            cursor = editor.textCursor()
-            block_fmt = cursor.blockFormat()
-            block_fmt.setBackground(color)
-            cursor.setBlockFormat(block_fmt)
-            editor.setFocus()
-
-    def _insert_list(self, editor, list_type):
-        if list_type == "bullet":
-            editor.insertHtml("<ul><li>Item</li></ul>")
-        elif list_type == "numbered":
-            editor.insertHtml("<ol><li>Item</li></ol>")
-
-    def _inserir_link(self, editor):
-        url, ok = QInputDialog.getText(self, "Inserir Link", "URL:")
-        if ok and url:
-            text, ok2 = QInputDialog.getText(self, "Texto do Link", "Texto (opcional):")
-            if ok2:
-                link_text = text if text else url
-                html = f'<a href="{url}">{link_text}</a>'
-            editor.insertHtml(html)
-
-    def _inserir_botao(self, editor):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Inserir Botão")
-        dialog.setGeometry(300, 300, 380, 380)
-
-        layout = QVBoxLayout(dialog)
-
-        layout.addWidget(QLabel("Texto do Botão:"))
-        texto_input = QLineEdit()
-        texto_input.setPlaceholderText("Ex: Inscreva-se")
-        layout.addWidget(texto_input)
-
-        layout.addWidget(QLabel("Link (URL):"))
-        url_input = QLineEdit()
-        url_input.setPlaceholderText("Ex: https://exemplo.com/curso")
-        layout.addWidget(url_input)
-
-        layout.addWidget(QLabel("Cor do Botão:"))
-        cor_combo = QComboBox()
-        cor_combo.addItems(["Azul", "Verde", "Vermelho", "Laranja", "Roxo", "Cinza"])
-        layout.addWidget(cor_combo)
-
-        layout.addWidget(QLabel("Arredondamento:"))
-        raio_combo = QComboBox()
-        raio_combo.addItems(["Nenhum (0px)", "Pouco (4px)", "Médio (8px)", "Muito (15px)", "Total (25px)"])
-        layout.addWidget(raio_combo)
-
-        layout.addWidget(QLabel("Preenchimento Vertical:"))
-        pad_v_combo = QComboBox()
-        pad_v_combo.addItems(["Pequeno (6px)", "Médio (12px)", "Grande (18px)"])
-        layout.addWidget(pad_v_combo)
-
-        layout.addWidget(QLabel("Preenchimento Horizontal:"))
-        pad_h_combo = QComboBox()
-        pad_h_combo.addItems(["Pequeno (12px)", "Médio (24px)", "Grande (36px)"])
-        layout.addWidget(pad_h_combo)
-
-        layout.addWidget(QLabel("Alinhamento:"))
-        align_combo = QComboBox()
-        align_combo.addItems(["Esquerda", "Centro", "Direita"])
-        layout.addWidget(align_combo)
-
-        btn_layout = QHBoxLayout()
-        btn_ok = QPushButton("Inserir")
-        btn_ok.clicked.connect(dialog.accept)
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.clicked.connect(dialog.reject)
-        btn_layout.addWidget(btn_ok)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        if dialog.exec_() == QDialog.Accepted:
-            texto = texto_input.text().strip() or "Clique Aqui"
-            url = url_input.text().strip() or "#"
-
-            cores = {"Azul": "#3498db", "Verde": "#27ae60", "Vermelho": "#e74c3c",
-                     "Laranja": "#e67e22", "Roxo": "#8e44ad", "Cinza": "#7f8c8d"}
-            cor = cores[cor_combo.currentText()]
-
-            raios = {"Nenhum (0px)": "0", "Pouco (4px)": "4", "Médio (8px)": "8",
-                     "Muito (15px)": "15", "Total (25px)": "25"}
-            raio = raios[raio_combo.currentText()]
-
-            pads_v = {"Pequeno (6px)": "6", "Médio (12px)": "12", "Grande (18px)": "18"}
-            pad_v = pads_v[pad_v_combo.currentText()]
-
-            pads_h = {"Pequeno (12px)": "12", "Médio (24px)": "24", "Grande (36px)": "36"}
-            pad_h = pads_h[pad_h_combo.currentText()]
-
-            align = {"Esquerda": "left", "Centro": "center", "Direita": "right"}[align_combo.currentText()]
-
-            params = urlencode({
-                'text': texto, 'url': url, 'color': cor,
-                'radius': raio, 'pad_v': pad_v, 'pad_h': pad_h, 'align': align
-            })
-            href = f"btn://data?{params}"
-            html = (
-                f'<a href="{href}" style="background-color:{cor}; color:white; '
-                f'padding:{pad_v}px {pad_h}px; text-decoration:none; font-weight:bold; '
-                f'display:inline-block; font-size:14px;">{texto}</a>'
-            )
-            editor.insertHtml(html)
-
-    def _editar_botao(self, editor):
-        cursor = editor.textCursor()
-        fmt = cursor.charFormat()
-
-        if not fmt.isAnchor() or not fmt.anchorHref().startswith('btn://'):
-            QMessageBox.information(
-                self, "Editar Botão",
-                "Posicione o cursor sobre um botão e clique com botão direito.")
-            return
-
-        href = fmt.anchorHref()
-        qs = parse_qs(href.split('?', 1)[1])
-        texto = qs.get('text', [''])[0]
-        url = qs.get('url', [''])[0]
-        cor_hex = qs.get('color', ['#3498db'])[0]
-        raio_px = qs.get('radius', ['8'])[0]
-        pad_v_px = qs.get('pad_v', ['12'])[0]
-        pad_h_px = qs.get('pad_h', ['24'])[0]
-        align = qs.get('align', ['center'])[0]
-
-        cor_para_nome = {"#3498db": "Azul", "#27ae60": "Verde", "#e74c3c": "Vermelho",
-                         "#e67e22": "Laranja", "#8e44ad": "Roxo", "#7f8c8d": "Cinza"}
-        nome_cor = cor_para_nome.get(cor_hex, "Azul")
-
-        raio_para_nome = {"0": "Nenhum (0px)", "4": "Pouco (4px)", "8": "Médio (8px)",
-                          "15": "Muito (15px)", "25": "Total (25px)"}
-        nome_raio = raio_para_nome.get(raio_px, "Médio (8px)")
-
-        pad_v_para_nome = {"6": "Pequeno (6px)", "12": "Médio (12px)", "18": "Grande (18px)"}
-        nome_pad_v = pad_v_para_nome.get(pad_v_px, "Médio (12px)")
-
-        pad_h_para_nome = {"12": "Pequeno (12px)", "24": "Médio (24px)", "36": "Grande (36px)"}
-        nome_pad_h = pad_h_para_nome.get(pad_h_px, "Médio (24px)")
-
-        align_para_nome = {"left": "Esquerda", "center": "Centro", "right": "Direita"}
-        nome_align = align_para_nome.get(align, "Centro")
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Editar Botão")
-        dialog.setGeometry(300, 300, 380, 380)
-
-        layout = QVBoxLayout(dialog)
-
-        layout.addWidget(QLabel("Texto do Botão:"))
-        texto_input = QLineEdit(texto)
-        layout.addWidget(texto_input)
-
-        layout.addWidget(QLabel("Link (URL):"))
-        url_input = QLineEdit(url)
-        layout.addWidget(url_input)
-
-        layout.addWidget(QLabel("Cor do Botão:"))
-        cor_combo = QComboBox()
-        cor_combo.addItems(["Azul", "Verde", "Vermelho", "Laranja", "Roxo", "Cinza"])
-        cor_combo.setCurrentText(nome_cor)
-        layout.addWidget(cor_combo)
-
-        layout.addWidget(QLabel("Arredondamento:"))
-        raio_combo = QComboBox()
-        raio_combo.addItems(["Nenhum (0px)", "Pouco (4px)", "Médio (8px)", "Muito (15px)", "Total (25px)"])
-        raio_combo.setCurrentText(nome_raio)
-        layout.addWidget(raio_combo)
-
-        layout.addWidget(QLabel("Preenchimento Vertical:"))
-        pad_v_combo = QComboBox()
-        pad_v_combo.addItems(["Pequeno (6px)", "Médio (12px)", "Grande (18px)"])
-        pad_v_combo.setCurrentText(nome_pad_v)
-        layout.addWidget(pad_v_combo)
-
-        layout.addWidget(QLabel("Preenchimento Horizontal:"))
-        pad_h_combo = QComboBox()
-        pad_h_combo.addItems(["Pequeno (12px)", "Médio (24px)", "Grande (36px)"])
-        pad_h_combo.setCurrentText(nome_pad_h)
-        layout.addWidget(pad_h_combo)
-
-        layout.addWidget(QLabel("Alinhamento:"))
-        align_combo = QComboBox()
-        align_combo.addItems(["Esquerda", "Centro", "Direita"])
-        align_combo.setCurrentText(nome_align)
-        layout.addWidget(align_combo)
-
-        btn_layout = QHBoxLayout()
-        btn_ok = QPushButton("Atualizar")
-        btn_ok.clicked.connect(dialog.accept)
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.clicked.connect(dialog.reject)
-        btn_layout.addWidget(btn_ok)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        if dialog.exec_() == QDialog.Accepted:
-            novo_texto = texto_input.text().strip() or "Clique Aqui"
-            novo_url = url_input.text().strip() or "#"
-
-            cores = {"Azul": "#3498db", "Verde": "#27ae60", "Vermelho": "#e74c3c",
-                     "Laranja": "#e67e22", "Roxo": "#8e44ad", "Cinza": "#7f8c8d"}
-            nova_cor = cores[cor_combo.currentText()]
-
-            raios = {"Nenhum (0px)": "0", "Pouco (4px)": "4", "Médio (8px)": "8",
-                     "Muito (15px)": "15", "Total (25px)": "25"}
-            novo_raio = raios[raio_combo.currentText()]
-
-            pads_v = {"Pequeno (6px)": "6", "Médio (12px)": "12", "Grande (18px)": "18"}
-            novo_pad_v = pads_v[pad_v_combo.currentText()]
-
-            pads_h = {"Pequeno (12px)": "12", "Médio (24px)": "24", "Grande (36px)": "36"}
-            novo_pad_h = pads_h[pad_h_combo.currentText()]
-
-            novo_align = {"Esquerda": "left", "Centro": "center", "Direita": "right"}[align_combo.currentText()]
-
-            params = urlencode({
-                'text': novo_texto, 'url': novo_url, 'color': nova_cor,
-                'radius': novo_raio, 'pad_v': novo_pad_v, 'pad_h': novo_pad_h,
-                'align': novo_align
-            })
-            novo_href = f"btn://data?{params}"
-            nova_tag = (
-                f'<a href="{novo_href}" style="background-color:{nova_cor}; color:white; '
-                f'padding:{novo_pad_v}px {novo_pad_h}px; text-decoration:none; font-weight:bold; '
-                f'display:inline-block; font-size:14px;">{novo_texto}</a>'
-            )
-
-            html = editor.toHtml()
-            html = re.sub(
-                rf'href="{re.escape(href)}"[^>]*>.*?</a>',
-                nova_tag,
-                html,
-                flags=re.DOTALL
-            )
-            editor.setHtml(html)
-
-    def _acao_botao_context_menu(self, editor, action):
-        cursor = editor.textCursor()
-        fmt = cursor.charFormat()
-        
-        if action == 'edit':
-            self._editar_botao(editor)
-        elif action == 'remove':
-            if fmt.isAnchor() and fmt.anchorHref().startswith('btn://'):
-                href = fmt.anchorHref()
-                html = editor.toHtml()
-                html = re.sub(
-                    rf'href="{re.escape(href)}"[^>]*>.*?</a>',
-                    '',
-                    html,
-                    count=1,
-                    flags=re.DOTALL
-                )
-                editor.setHtml(html)
-    
-    def _inserir_imagem(self, editor):
-        arquivo, _ = QFileDialog.getOpenFileName(self, "Selecionar Imagem", "", "Imagens (*.png *.jpg *.jpeg *.gif *.bmp)")
-        if not arquivo:
-            return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Inserir Imagem")
-        dialog.setGeometry(300, 300, 300, 250)
-
-        layout = QVBoxLayout(dialog)
-
-        layout.addWidget(QLabel("Tamanho:"))
-        tamanho_combo = QComboBox()
-        tamanho_combo.addItems(["Pequena (25%)", "Media (50%)", "Grande (75%)", "Total (100%)"])
-        tamanho_combo.setCurrentIndex(1)
-        layout.addWidget(tamanho_combo)
-
-        layout.addWidget(QLabel("Alinhamento:"))
-        alinhamento_combo = QComboBox()
-        alinhamento_combo.addItems(["Esquerda", "Centro", "Direita"])
-        layout.addWidget(alinhamento_combo)
-
-        btn_layout = QHBoxLayout()
-        btn_ok = QPushButton("Inserir")
-        btn_ok.clicked.connect(dialog.accept)
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.clicked.connect(dialog.reject)
-        btn_layout.addWidget(btn_ok)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        if dialog.exec_() == QDialog.Accepted:
-            import base64
-            with open(arquivo, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode()
-            ext = os.path.splitext(arquivo)[1].lower()
-            mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "bmp": "image/bmp"}.get(ext[1:], "image/png")
-
-            pcts = {"Pequena (25%)": 0.25, "Media (50%)": 0.5, "Grande (75%)": 0.75, "Total (100%)": 1}
-            pct = pcts[tamanho_combo.currentText()]
-            align = {"Esquerda": "left", "Centro": "center", "Direita": "right"}[alinhamento_combo.currentText()]
-
-            img_id = self._img_counter
-            self._img_counter += 1
-            editor_width = editor.viewport().width()
-            px = int(editor_width * pct)
-            self._imagens[str(img_id)] = {
-                'b64': b64, 'mime': mime, 'px': px, 'align': align
-            }
-            editor.insertPlainText(f"_IMG_{img_id}_{px}_{align}_")
-    
-    def _inserir_variavel(self, editor, combo, index):
-        if index > 0:
-            var = combo.currentText()
-            editor.insertPlainText(var)
-            combo.setCurrentIndex(0)
-    
-    def _html_body(self, editor):
-        raw = editor.toHtml()
-        m = re.search(r'<body[^>]*>(.*)</body>', raw, re.DOTALL)
-        content = m.group(1).strip() if m else raw
-        content = re.sub(r'</?(?:html|head|body|meta|!DOCTYPE)[^>]*>', '', content, flags=re.DOTALL)
-        content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL)
-        return content
-
-    def _secao_html_isolada(self, editor):
-        raw = editor.toHtml()
-        m_body = re.search(r'<body([^>]*)>(.*)</body>', raw, re.DOTALL)
-        if m_body:
-            body_attrs = m_body.group(1)
-            content = m_body.group(2).strip()
-            m_style = re.search(r'style="([^"]*)"', body_attrs)
-            body_style = m_style.group(1) if m_style else ""
-        else:
-            content = raw
-            body_style = ""
-        content = re.sub(r'</?(?:html|head|body|meta|!DOCTYPE)[^>]*>', '', content, flags=re.DOTALL)
-        content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL)
-        return (
-            f'<table width="100%" cellpadding="12" cellspacing="0" '
-            f'style="border-collapse:collapse; {body_style}">'
-            f'<tr><td>{content}</td></tr></table>'
-        )
-
-    def atualizar_previa(self):
-        assunto = self.email_assunto.text()
-        cab = self._secao_html_isolada(self.email_cabecalho)
-        corpo = self._secao_html_isolada(self.email_corpo)
-        rodape = self._secao_html_isolada(self.email_rodape)
-        separador = '<hr style="border: none; border-top: 2px dashed #ccc; margin: 12px 0;">'
-        partes = [p for p in [cab, corpo, rodape] if p]
-        html = separador.join(partes) if partes else ""
-        
-        # Buscar dados reais do curso para a prévia
-        try:
-            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT c.nome, c.tema, c.descricao, c.carga_horaria, i.nome, i.empresa, cd.hora
-                FROM cursos_datas cd
-                JOIN cursos c ON c.id = cd.curso_id
-                JOIN instrutores i ON i.id = cd.instrutor_id
-                WHERE cd.id = ?
-            """, (self.prog_id,))
-            curso_info = cursor.fetchone()
-            conn.close()
-            
-            if curso_info:
-                curso_nome, tema, descricao, carga_horaria, instrutor_nome, instrutor_empresa, hora = curso_info
-                data_formatada = QDate.fromString(self.data, "yyyy-MM-dd").toString("dd/MM/yyyy")
-                
-                preview_html = html.replace("{{nome_curso}}", f"<strong>{curso_nome or ''}</strong>")\
-                                  .replace("{{data_curso}}", f"<strong>{data_formatada}</strong>")\
-                                  .replace("{{hora_curso}}", f"<strong>{hora or ''}</strong>")\
-                                  .replace("{{nome_instrutor}}", f"<strong>{instrutor_nome or ''}</strong>")\
-                                  .replace("{{carga_horaria}}", f"<strong>{carga_horaria}h</strong>" if carga_horaria else "")\
-                                  .replace("{{tema_curso}}", f"<strong>{tema or ''}</strong>")
-                preview_html = preview_html.replace("{{empresa_instrutor}}", f"<strong>{instrutor_empresa or ''}</strong>")
-                preview_html = preview_html.replace("{{nome_aluno}}", "")
-            else:
-                preview_html = html.replace("{{nome_curso}}", "<strong>[Nome do Curso]</strong>")\
-                                  .replace("{{data_curso}}", "<strong>[Data]</strong>")\
-                                  .replace("{{hora_curso}}", "<strong>[Hora]</strong>")\
-                                  .replace("{{nome_instrutor}}", "<strong>[Instrutor]</strong>")\
-                                  .replace("{{empresa_instrutor}}", "<strong>[Empresa]</strong>")\
-                                  .replace("{{carga_horaria}}", "<strong>[Carga Horária]</strong>")\
-                                  .replace("{{tema_curso}}", "<strong>[Tema]</strong>")
-                preview_html = preview_html.replace("{{nome_aluno}}", "")
-        except:
-            preview_html = html.replace("{{nome_curso}}", "<strong>[Nome do Curso]</strong>")\
-                              .replace("{{data_curso}}", "<strong>[Data]</strong>")\
-                              .replace("{{hora_curso}}", "<strong>[Hora]</strong>")\
-                              .replace("{{nome_instrutor}}", "<strong>[Instrutor]</strong>")\
-                              .replace("{{empresa_instrutor}}", "<strong>[Empresa]</strong>")\
-                              .replace("{{carga_horaria}}", "<strong>[Carga Horária]</strong>")\
-                              .replace("{{tema_curso}}", "<strong>[Tema]</strong>")
-            preview_html = preview_html.replace("{{nome_aluno}}", "")
-        
-        # Converter placeholders de botões para HTML real
-        preview_html = _converter_botoes_para_html(preview_html)
-        preview_html = _converter_imagens_para_html(preview_html, self._imagens)
-        
-        preview_html = re.sub(r'<html[^>]*>|<head>.*?</head>|<body[^>]*>|</html>|</body>', '', preview_html, flags=re.DOTALL).strip()
-        
-        self.email_previa.setHtml(f"""
-        <div align="center" style="font-family: 'Segoe UI', Arial, sans-serif; background: #f0f0f0; padding: 20px;">
-            <table cellpadding="0" cellspacing="0" style="width: 100%; background: #ffffff; border-radius: 6px; border: 1px solid #ddd;">
-                <tr>
-                    <td style="padding: 14px 20px 8px 20px; background: #f9f9f9; border-bottom: 1px solid #e0e0e0;">
-                        <div style="font-size: 13px; color: #555;">
-                            <b style="color: #333;">De:</b> sistema@gestorcursos.com &nbsp;|&nbsp;
-                            <b style="color: #333;">Para:</b> destinatario@email.com &nbsp;|&nbsp;
-                            <b style="color: #333;">Assunto:</b> {assunto or '(sem assunto)'}
-                        </div>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding: 0;">
-                        {preview_html}
-                    </td>
-                </tr>
-                <tr>
-                    <td align="center" style="padding: 10px; font-size: 11px; color: #999; border-top: 1px solid #eee;">
-                        Previa visual - variaveis serao substituidas no envio real
-                    </td>
-                </tr>
-            </table>
-        </div>
-        """)
-    
-    def carregar_info_previa(self):
-        try:
-            texto_emails = self.email_destinatarios.toPlainText().strip()
-            if texto_emails:
-                emails_colados = [e.strip() for e in re.split(r'[,;\n]+', texto_emails) if e.strip() and "@" in e.strip()]
-                self.email_info.setText(f"📧 <b>Emails colados:</b> {len(emails_colados)} email(s) válido(s)")
-            else:
-                self.email_info.setText(f"📧 <b>Emails colados:</b> Nenhum (campo vazio!)")
-        except:
-            self.email_info.setText("Erro ao carregar info")
-    
-    def limpar_editor(self):
-        self.email_assunto.clear()
-        self.email_cabecalho.clear()
-        self.email_corpo.clear()
-        self.email_rodape.clear()
-        self.email_destinatarios.clear()
-        self._template_atual = None
-        self._template_modificado = False
-        self._atualizar_botao_salvar_alteracoes()
-        self.atualizar_previa()
-        self.carregar_info_previa()
-
-    def salvar_template(self):
-        nome_padrao = self._template_atual or ""
-        nome, ok = QInputDialog.getText(self, "Salvar Template", "Nome do template:", text=nome_padrao)
-        if ok and nome:
-            self._salvar_template_por_nome(nome)
-
-    def sobrescrever_template(self):
-        if not self._template_atual:
-            QMessageBox.warning(self, "Aviso", "Nenhum template carregado. Use 'Salvar' para criar um novo.")
-            return
-        self._salvar_template_por_nome(self._template_atual)
-
-    def _salvar_template_por_nome(self, nome):
-        try:
-            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS email_templates (
-                    id INTEGER PRIMARY KEY,
-                    nome TEXT UNIQUE,
-                    assunto TEXT,
-                    corpo_html TEXT
-                )
-            """)
-            cursor.execute("PRAGMA table_info(email_templates)")
-            cols = [r[1] for r in cursor.fetchall()]
-            if 'corpo_cabecario' not in cols:
-                cursor.execute("ALTER TABLE email_templates ADD COLUMN corpo_cabecario TEXT")
-            if 'corpo_rodape' not in cols:
-                cursor.execute("ALTER TABLE email_templates ADD COLUMN corpo_rodape TEXT")
-            cursor.execute("""
-                INSERT OR REPLACE INTO email_templates
-                    (nome, assunto, corpo_html, corpo_cabecario, corpo_rodape)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                nome,
-                self.email_assunto.text(),
-                self._html_body(self.email_corpo),
-                self._html_body(self.email_cabecalho),
-                self._html_body(self.email_rodape),
-            ))
-            conn.commit()
-            conn.close()
-            self._template_atual = nome
-            self._template_modificado = False
-            self._atualizar_botao_salvar_alteracoes()
-            QMessageBox.information(self, "Sucesso", f"Template '{nome}' salvo!")
-        except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Erro ao salvar template: {str(e)}")
-
-    def _marcar_template_modificado(self):
-        if not self._template_modificado and self._template_atual:
-            self._template_modificado = True
-            self._atualizar_botao_salvar_alteracoes()
-
-    def _atualizar_botao_salvar_alteracoes(self):
-        self.btn_salvar_alteracoes.setEnabled(
-            self._template_atual is not None and self._template_modificado
-        )
-
-    def editar_html(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Editar HTML")
-        dialog.setGeometry(300, 300, 700, 500)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("HTML completo do email (cabeçário + corpo + rodapé):"))
-        editor = QPlainTextEdit()
-        combined = (
-            f"<!-- CABECALHO -->\n{self._html_body(self.email_cabecalho)}\n"
-            f"<!-- CORPO -->\n{self._html_body(self.email_corpo)}\n"
-            f"<!-- RODAPE -->\n{self._html_body(self.email_rodape)}"
-        )
-        editor.setPlainText(combined)
-        editor.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
-        layout.addWidget(editor)
-        btn_layout = QHBoxLayout()
-        btn_aplicar = QPushButton("Aplicar")
-        btn_aplicar.clicked.connect(dialog.accept)
-        btn_cancelar = QPushButton("Cancelar")
-        btn_cancelar.clicked.connect(dialog.reject)
-        btn_layout.addWidget(btn_aplicar)
-        btn_layout.addWidget(btn_cancelar)
-        layout.addLayout(btn_layout)
-        if dialog.exec_() == QDialog.Accepted:
-            html = editor.toPlainText().strip()
-            if html:
-                # Tenta separar pelos marcadores, senão coloca tudo no corpo
-                m_cab = re.search(r'<!-- CABECALHO -->(.*?)<!-- CORPO -->', html, re.DOTALL)
-                m_corp = re.search(r'<!-- CORPO -->(.*?)<!-- RODAPE -->', html, re.DOTALL)
-                m_rod = re.search(r'<!-- RODAPE -->(.*)', html, re.DOTALL)
-                if m_cab and m_corp and m_rod:
-                    self.email_cabecalho.setHtml(m_cab.group(1).strip())
-                    self.email_corpo.setHtml(m_corp.group(1).strip())
-                    self.email_rodape.setHtml(m_rod.group(1).strip())
-                else:
-                    self.email_corpo.setHtml(html)
-                self.atualizar_previa()
-    
-    def carregar_template(self):
-        try:
-            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
-            cursor = conn.cursor()
-            cursor.execute("CREATE TABLE IF NOT EXISTS email_templates (id INTEGER PRIMARY KEY, nome TEXT UNIQUE, assunto TEXT, corpo_html TEXT)")
-            try:
-                cursor.execute("SELECT nome, assunto, corpo_html, corpo_cabecario, corpo_rodape FROM email_templates")
-                templates = cursor.fetchall()
-            except sqlite3.OperationalError:
-                cursor.execute("SELECT nome, assunto, corpo_html FROM email_templates")
-                templates = [(r[0], r[1], r[2], None, None) for r in cursor.fetchall()]
-            conn.close()
-
-            if not templates:
-                QMessageBox.information(self, "Aviso", "Nenhum template salvo.")
-                return
-
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Gerenciar Templates")
-            dialog.setGeometry(300, 300, 500, 400)
-            layout = QVBoxLayout(dialog)
-
-            layout.addWidget(QLabel("Selecione um template:"))
-            list_widget = QListWidget()
-            for t in templates:
-                list_widget.addItem(t[0])
-            layout.addWidget(list_widget)
-
-            btn_layout = QHBoxLayout()
-            btn_carregar = QPushButton("Carregar")
-            btn_carregar.clicked.connect(dialog.accept)
-            btn_renomear = QPushButton("Renomear")
-            btn_excluir = QPushButton("Excluir")
-            btn_cancelar = QPushButton("Cancelar")
-            btn_cancelar.clicked.connect(dialog.reject)
-
-            btn_layout.addWidget(btn_carregar)
-            btn_layout.addWidget(btn_renomear)
-            btn_layout.addWidget(btn_excluir)
-            btn_layout.addWidget(btn_cancelar)
-            layout.addLayout(btn_layout)
-
-            # Handler para renomear
-            def renomear():
-                item = list_widget.currentItem()
-                if not item:
-                    QMessageBox.warning(dialog, "Aviso", "Selecione um template.")
-                    return
-                novo_nome, ok = QInputDialog.getText(dialog, "Renomear", "Novo nome:", text=item.text())
-                if ok and novo_nome:
-                    try:
-                        conn2 = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
-                        c2 = conn2.cursor()
-                        c2.execute("UPDATE email_templates SET nome = ? WHERE nome = ?", (novo_nome, item.text()))
-                        conn2.commit()
-                        conn2.close()
-                        item.setText(novo_nome)
-                        QMessageBox.information(dialog, "Sucesso", "Template renomeado!")
-                    except Exception as e:
-                        QMessageBox.critical(dialog, "Erro", str(e))
-
-            # Handler para excluir
-            def excluir():
-                item = list_widget.currentItem()
-                if not item:
-                    QMessageBox.warning(dialog, "Aviso", "Selecione um template.")
-                    return
-                resp = QMessageBox.question(dialog, "Confirmar", f"Excluir template '{item.text()}'?",
-                                            QMessageBox.Yes | QMessageBox.No)
-                if resp == QMessageBox.Yes:
-                    try:
-                        conn2 = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
-                        c2 = conn2.cursor()
-                        c2.execute("DELETE FROM email_templates WHERE nome = ?", (item.text(),))
-                        conn2.commit()
-                        conn2.close()
-                        list_widget.takeItem(list_widget.row(item))
-                        QMessageBox.information(dialog, "Sucesso", "Template excluído!")
-                    except Exception as e:
-                        QMessageBox.critical(dialog, "Erro", str(e))
-
-            btn_renomear.clicked.connect(renomear)
-            btn_excluir.clicked.connect(excluir)
-
-            if dialog.exec_() == QDialog.Accepted:
-                item = list_widget.currentItem()
-                if not item:
-                    return
-                nome = item.text()
-                for row in templates:
-                    if row[0] == nome:
-                        t_nome, t_assunto, t_corpo = row[0], row[1], row[2]
-                        t_cabecario = row[3] if len(row) > 3 else None
-                        t_rodape = row[4] if len(row) > 4 else None
-                        self.email_assunto.setText(t_assunto)
-                        self._template_atual = None  # evita marcar como modificado
-                        self.email_cabecalho.setHtml(t_cabecario or "")
-                        self.email_corpo.setHtml(t_corpo or "")
-                        self.email_rodape.setHtml(t_rodape or "")
-                        self._template_atual = nome
-                        self._template_modificado = False
-                        self._atualizar_botao_salvar_alteracoes()
-                        self.atualizar_previa()
-                        break
-        except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Erro ao gerenciar templates: {str(e)}")
+        header = self.tabela_alunos.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.tabela_alunos.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabela_alunos.verticalHeader().setVisible(False)
+        layout.addWidget(self.tabela_alunos)
+
+        self.aluno_arquivo_selecionado = None
+        self.alunos_dados = []
+        self.tab_alunos.setLayout(layout)
+        self.carregar_alunos()
 
     def carregar_dados(self):
         try:
@@ -3369,11 +2417,6 @@ class DetalhesProgramacaoWindow(QDialog):
                     self.instrutor_combo.setCurrentIndex(idx)
                 if p_hora:
                     self.hora_input.setTime(QTime.fromString(p_hora, "HH:mm"))
-
-            # Contar alunos
-            cursor.execute("SELECT COUNT(*) FROM alunos WHERE curso_id = ?", (self.curso_id,))
-            total_alunos = cursor.fetchone()[0]
-            self.alunos_resumo.setText(f"{total_alunos} aluno(s) cadastrado(s) neste curso.")
 
             conn.close()
 
@@ -3435,22 +2478,1317 @@ class DetalhesProgramacaoWindow(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Erro", f"Erro ao excluir: {str(e)}")
 
-    def abrir_gerenciar_alunos(self):
-        nome_curso = self.curso_combo.currentText()
-        janela = GerenciarAlunosWindow(self.curso_id, nome_curso, self)
-        janela.exec_()
-        self.carregar_dados()
+    def selecionar_arquivo_aluno(self):
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self, "Selecionar Documento", "",
+            "Documentos (*.pdf *.xls *.xlsx *.doc *.docx *.png *.jpg *.jpeg *.bmp *.txt);;Todos (*.*)"
+        )
+        if arquivo:
+            self.aluno_arquivo_selecionado = arquivo
+            self.aluno_file_label.setText(os.path.basename(arquivo))
+            self.aluno_file_label.setStyleSheet("color: #333;")
 
-    def enviar_emails(self):
-        assunto = self.email_assunto.text().strip()
-        html_corpo = self._secao_html_isolada(self.email_cabecalho) + self._secao_html_isolada(self.email_corpo) + self._secao_html_isolada(self.email_rodape)
+    def cadastrar_aluno(self):
+        nome = self.aluno_nome_input.text().strip()
+        faculdade = self.aluno_faculdade_input.text().strip()
 
-        if not assunto or not html_corpo.strip():
-            QMessageBox.warning(self, "Erro", "Preencha o assunto e a mensagem.")
+        if not nome:
+            QMessageBox.warning(self, "Erro", "Preencha o nome do aluno.")
             return
 
         try:
             conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+
+            if self.aluno_arquivo_selecionado:
+                with open(self.aluno_arquivo_selecionado, "rb") as f:
+                    conteudo = f.read()
+                nome_arquivo = os.path.basename(self.aluno_arquivo_selecionado)
+                ext = os.path.splitext(nome_arquivo)[1]
+                cursor.execute("""
+                    INSERT INTO alunos (curso_id, nome, faculdade, nome_arquivo, extensao, conteudo)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (self.curso_id, nome, faculdade, nome_arquivo, ext, conteudo))
+            else:
+                cursor.execute("""
+                    INSERT INTO alunos (curso_id, nome, faculdade)
+                    VALUES (?, ?, ?)
+                """, (self.curso_id, nome, faculdade))
+
+            conn.commit()
+            conn.close()
+
+            QMessageBox.information(self, "Sucesso", f"Aluno '{nome}' cadastrado com sucesso!")
+            self.aluno_nome_input.clear()
+            self.aluno_faculdade_input.clear()
+            self.aluno_file_label.setText("Nenhum arquivo selecionado")
+            self.aluno_file_label.setStyleSheet("color: #666;")
+            self.aluno_arquivo_selecionado = None
+            self.carregar_alunos()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao cadastrar aluno: {str(e)}")
+
+    def carregar_alunos(self):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, nome, faculdade, nome_arquivo
+                FROM alunos
+                WHERE curso_id = ?
+                ORDER BY nome ASC
+            """, (self.curso_id,))
+            self.alunos_dados = cursor.fetchall()
+            conn.close()
+
+            self.aplicar_filtro_alunos()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao carregar alunos: {str(e)}")
+
+    def aplicar_filtro_alunos(self):
+        texto = self.search_alunos_input.text().strip().lower() if hasattr(self, 'search_alunos_input') else ""
+
+        if not texto:
+            filtrados = self.alunos_dados
+        else:
+            filtrados = []
+            for aluno_id, nome, faculdade, nome_arquivo in self.alunos_dados:
+                alvo = f"{nome or ''} {faculdade or ''} {nome_arquivo or ''}".lower()
+                if texto in alvo:
+                    filtrados.append((aluno_id, nome, faculdade, nome_arquivo))
+
+        self.tabela_alunos.setRowCount(0)
+
+        for row, (aluno_id, nome, faculdade, nome_arquivo) in enumerate(filtrados):
+            self.tabela_alunos.insertRow(row)
+
+            item_id = QTableWidgetItem(str(aluno_id))
+            item_id.setFlags(item_id.flags() & ~Qt.ItemIsEditable)
+            self.tabela_alunos.setItem(row, 0, item_id)
+
+            item_nome = QTableWidgetItem(nome or "")
+            item_nome.setFlags(item_nome.flags() & ~Qt.ItemIsEditable)
+            self.tabela_alunos.setItem(row, 1, item_nome)
+
+            item_faculdade = QTableWidgetItem(faculdade or "")
+            item_faculdade.setFlags(item_faculdade.flags() & ~Qt.ItemIsEditable)
+            self.tabela_alunos.setItem(row, 2, item_faculdade)
+
+            item_doc = QTableWidgetItem(nome_arquivo or "Sem documento")
+            item_doc.setFlags(item_doc.flags() & ~Qt.ItemIsEditable)
+            self.tabela_alunos.setItem(row, 3, item_doc)
+
+            btn_layout = QHBoxLayout()
+            btn_widget = QWidget()
+            btn_widget.setLayout(btn_layout)
+
+            if nome_arquivo:
+                btn_visualizar = QPushButton("Visualizar")
+                btn_visualizar.setStyleSheet("padding: 4px 12px; font-size: 12px;")
+                btn_visualizar.clicked.connect(lambda checked, aid=aluno_id: self.visualizar_documento_aluno(aid))
+                btn_layout.addWidget(btn_visualizar)
+
+            btn_editar = QPushButton("Editar")
+            btn_editar.setStyleSheet("padding: 4px 12px; font-size: 12px; background-color: #f39c12;")
+            btn_editar.clicked.connect(lambda checked, aid=aluno_id: self.editar_aluno(aid))
+            btn_layout.addWidget(btn_editar)
+
+            btn_excluir = QPushButton("Excluir")
+            btn_excluir.setStyleSheet("padding: 4px 12px; font-size: 12px; background-color: #e74c3c;")
+            btn_excluir.clicked.connect(lambda checked, aid=aluno_id, anome=nome: self.excluir_aluno(aid, anome))
+            btn_layout.addWidget(btn_excluir)
+
+            self.tabela_alunos.setCellWidget(row, 4, btn_widget)
+
+        self.tabela_alunos.resizeRowsToContents()
+
+    def visualizar_documento_aluno(self, aluno_id):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT nome_arquivo, extensao, conteudo
+                FROM alunos
+                WHERE id = ?
+            """, (aluno_id,))
+            row = cursor.fetchone()
+            conn.close()
+
+            if not row or not row[2]:
+                QMessageBox.warning(self, "Aviso", "Este aluno não possui documento anexado.")
+                return
+
+            nome, ext, blob = row
+            ext = (ext or os.path.splitext(nome)[1] or "").lower()
+            if not ext.startswith(".") and ext:
+                ext = "." + ext
+
+            tmp_dir = tempfile.gettempdir()
+            safe_name = nome.replace("/", "_").replace("\\", "_")
+            tmp_path = os.path.join(tmp_dir, f"aluno_doc_{aluno_id}_{safe_name}")
+            if ext and not tmp_path.lower().endswith(ext):
+                tmp_path += ext
+
+            with open(tmp_path, "wb") as f:
+                f.write(blob)
+
+            QDesktopServices.openUrl(QUrl.fromLocalFile(tmp_path))
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Não foi possível abrir o documento:\n{e}")
+
+    def editar_aluno(self, aluno_id):
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT nome, faculdade, nome_arquivo
+                FROM alunos WHERE id = ?
+            """, (aluno_id,))
+            dados = cursor.fetchone()
+            conn.close()
+
+            if not dados:
+                QMessageBox.warning(self, "Erro", "Aluno não encontrado.")
+                return
+
+            nome_atual, faculdade_atual, arquivo_atual = dados
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Editar Aluno")
+            dialog.setGeometry(300, 300, 500, 250)
+
+            layout = QVBoxLayout(dialog)
+
+            layout.addWidget(QLabel("Nome:"))
+            nome_input = QLineEdit(nome_atual or "")
+            layout.addWidget(nome_input)
+
+            layout.addWidget(QLabel("Faculdade/Universidade:"))
+            faculdade_input = QLineEdit(faculdade_atual or "")
+            layout.addWidget(faculdade_input)
+
+            layout.addWidget(QLabel("Documento:"))
+            doc_layout = QHBoxLayout()
+            file_label = QLabel(arquivo_atual or "Nenhum arquivo")
+            file_label.setStyleSheet("color: #666;")
+            doc_layout.addWidget(file_label)
+            novo_arquivo = [None]
+
+            def selecionar():
+                arquivo, _ = QFileDialog.getOpenFileName(
+                    dialog, "Selecionar Documento", "",
+                    "Documentos (*.pdf *.xls *.xlsx *.doc *.docx *.png *.jpg *.jpeg *.bmp *.txt);;Todos (*.*)"
+                )
+                if arquivo:
+                    novo_arquivo[0] = arquivo
+                    file_label.setText(os.path.basename(arquivo))
+                    file_label.setStyleSheet("color: #333;")
+
+            btn_sel = QPushButton("Selecionar Arquivo")
+            btn_sel.clicked.connect(selecionar)
+            doc_layout.addWidget(btn_sel)
+            layout.addLayout(doc_layout)
+
+            btn_salvar = QPushButton("Salvar")
+            btn_salvar.clicked.connect(lambda: self.salvar_edicao_aluno(
+                aluno_id, nome_input.text().strip(),
+                faculdade_input.text().strip(), novo_arquivo[0], dialog
+            ))
+            layout.addWidget(btn_salvar)
+
+            dialog.setLayout(layout)
+            dialog.exec_()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao editar aluno: {str(e)}")
+
+    def salvar_edicao_aluno(self, aluno_id, nome, faculdade, arquivo_path, dialog):
+        if not nome:
+            QMessageBox.warning(self, "Erro", "Preencha o nome do aluno.")
+            return
+
+        try:
+            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            cursor = conn.cursor()
+
+            if arquivo_path:
+                with open(arquivo_path, "rb") as f:
+                    conteudo = f.read()
+                nome_arquivo = os.path.basename(arquivo_path)
+                ext = os.path.splitext(nome_arquivo)[1]
+                cursor.execute("""
+                    UPDATE alunos
+                    SET nome = ?, faculdade = ?, nome_arquivo = ?, extensao = ?, conteudo = ?
+                    WHERE id = ?
+                """, (nome, faculdade, nome_arquivo, ext, conteudo, aluno_id))
+            else:
+                cursor.execute("""
+                    UPDATE alunos
+                    SET nome = ?, faculdade = ?
+                    WHERE id = ?
+                """, (nome, faculdade, aluno_id))
+
+            conn.commit()
+            conn.close()
+
+            QMessageBox.information(self, "Sucesso", "Aluno atualizado com sucesso!")
+            dialog.accept()
+            self.carregar_alunos()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao salvar edição: {str(e)}")
+
+    def excluir_aluno(self, aluno_id, nome):
+        resposta = QMessageBox.question(
+            self, "Confirmação",
+            f"Tem certeza que deseja excluir o aluno '{nome}'?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if resposta == QMessageBox.Yes:
+            try:
+                conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM alunos WHERE id = ?", (aluno_id,))
+                conn.commit()
+                conn.close()
+                QMessageBox.information(self, "Sucesso", "Aluno excluído com sucesso!")
+                self.carregar_alunos()
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao excluir aluno: {str(e)}")
+
+
+
+class EnviarEmailsWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Enviar Emails")
+        self.setWindowIcon(QIcon("crc.ico"))
+        self.setMinimumSize(1000, 600)
+        self.setGeometry(150, 150, 1200, 750)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
+
+        self.prog_id = None
+        self.data = None
+        self._imagens = {}
+        self._img_counter = 0
+        self._template_atual = None
+        self._template_modificado = False
+
+        self.setup_ui()
+        self._carregar_programacoes()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        # === Topo: Seleção de programação ===
+        top_frame = QFrame()
+        top_frame.setStyleSheet("QFrame { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; }")
+        top_layout = QHBoxLayout()
+        top_layout.setSpacing(12)
+        top_layout.setContentsMargins(12, 8, 12, 8)
+
+        lbl_prog = QLabel("Programação:")
+        lbl_prog.setStyleSheet("font-weight: bold; font-size: 12px; color: #1f2937;")
+        top_layout.addWidget(lbl_prog)
+
+        self.combo_programacoes = QComboBox()
+        self.combo_programacoes.setMinimumWidth(450)
+        self.combo_programacoes.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLength)
+        self.combo_programacoes.currentIndexChanged.connect(self._ao_mudar_programacao)
+        self.combo_programacoes.setStyleSheet("QComboBox { font-size: 12px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; background: #ffffff; } QComboBox:hover { border-color: #6366f1; } QComboBox::drop-down { border: none; width: 20px; }")
+        top_layout.addWidget(self.combo_programacoes, 1)
+
+        top_frame.setLayout(top_layout)
+        layout.addWidget(top_frame)
+
+        # === Container com abas: Compor Email + Logs ===
+        self.main_tabs = QTabWidget()
+        self.main_tabs.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #e2e8f0; border-radius: 6px; background: #ffffff; }
+            QTabBar::tab { min-width: 90px; padding: 5px 14px; background: #f1f5f9; color: #475569; margin: 0 1px; border: 1px solid #e2e8f0; border-bottom: none; border-radius: 5px 5px 0 0; font-size: 11px; font-weight: bold; }
+            QTabBar::tab:selected { background: #ffffff; color: #1e40af; }
+            QTabBar::tab:hover { background: #e2e8f0; }
+        """)
+
+        # === Aba 1: Compor Email ===
+        composer_widget = QWidget()
+        composer_layout = QVBoxLayout()
+        composer_layout.setContentsMargins(0, 0, 0, 0)
+        composer_layout.setSpacing(0)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(2)
+        splitter.setStyleSheet("QSplitter::handle { background: #d1d5db; }")
+        splitter.setChildrenCollapsible(False)
+
+        editor_panel = self._criar_painel_editor()
+        editor_panel.setMinimumWidth(200)
+        splitter.addWidget(editor_panel)
+
+        preview_panel = self._criar_painel_previa()
+        preview_panel.setMinimumWidth(300)
+        splitter.addWidget(preview_panel)
+
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
+        self.splitter = splitter
+
+        composer_layout.addWidget(splitter, 1)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("color: #e5e7eb;")
+        composer_layout.addWidget(sep)
+
+        barra_widget = QWidget()
+        barra_widget.setObjectName("barra_acoes")
+        btn_layout = QHBoxLayout(barra_widget)
+        btn_layout.setContentsMargins(4, 2, 4, 2)
+        btn_layout.setSpacing(3)
+
+        btn_previa = QPushButton("Prévia")
+        btn_previa.setFixedSize(46, 22)
+        btn_previa.setCursor(Qt.PointingHandCursor)
+        btn_previa.setStyleSheet("QPushButton { font-size: 10px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 3px; color: #0369a1; font-weight: bold; } QPushButton:hover { background: #e0f2fe; border-color: #38bdf8; }")
+        btn_layout.addWidget(btn_previa)
+
+        btn_limpar = QPushButton("Limpar")
+        btn_limpar.setFixedSize(46, 22)
+        btn_limpar.setCursor(Qt.PointingHandCursor)
+        btn_limpar.setStyleSheet("QPushButton { font-size: 10px; background: #ffffff; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; } QPushButton:hover { background: #f3f4f6; border-color: #9ca3af; }")
+        btn_layout.addWidget(btn_limpar)
+
+        btn_html = QPushButton("HTML")
+        btn_html.setFixedSize(42, 22)
+        btn_html.setCursor(Qt.PointingHandCursor)
+        btn_html.setStyleSheet("QPushButton { font-size: 10px; background: #ffffff; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; font-family: Consolas, monospace; } QPushButton:hover { background: #f3f4f6; border-color: #9ca3af; }")
+        btn_layout.addWidget(btn_html)
+
+        btn_salvar_template = QPushButton("Salvar")
+        btn_salvar_template.setFixedSize(46, 22)
+        btn_salvar_template.setCursor(Qt.PointingHandCursor)
+        btn_salvar_template.setStyleSheet("QPushButton { font-size: 10px; background: #ffffff; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; } QPushButton:hover { background: #f3f4f6; border-color: #9ca3af; }")
+        btn_layout.addWidget(btn_salvar_template)
+
+        btn_carregar_template = QPushButton("Carregar")
+        btn_carregar_template.setFixedSize(56, 22)
+        btn_carregar_template.setCursor(Qt.PointingHandCursor)
+        btn_carregar_template.setStyleSheet("QPushButton { font-size: 10px; background: #ffffff; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; } QPushButton:hover { background: #f3f4f6; border-color: #9ca3af; }")
+        btn_layout.addWidget(btn_carregar_template)
+
+        btn_sobrescrever = QPushButton("Sobrescrever")
+        self.btn_salvar_alteracoes = btn_sobrescrever
+        btn_sobrescrever.setFixedSize(76, 22)
+        btn_sobrescrever.setEnabled(False)
+        btn_sobrescrever.setCursor(Qt.PointingHandCursor)
+        btn_sobrescrever.setStyleSheet("QPushButton { font-size: 10px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 3px; color: #92400e; font-weight: bold; } QPushButton:hover { background: #fef3c7; border-color: #fbbf24; } QPushButton:disabled { background: #f3f4f6; border-color: #d1d5db; color: #9ca3af; }")
+        btn_layout.addWidget(btn_sobrescrever)
+
+        btn_layout.addStretch()
+
+        intervalo_widget = QWidget()
+        intervalo_layout = QHBoxLayout()
+        intervalo_layout.setContentsMargins(0, 0, 0, 0)
+        intervalo_layout.setSpacing(2)
+        lbl_intervalo = QLabel("Intervalo:")
+        lbl_intervalo.setStyleSheet("font-size: 10px; color: #374151;")
+        intervalo_layout.addWidget(lbl_intervalo)
+        self.intervalo_spin = QSpinBox()
+        self.intervalo_spin.setRange(1, 60)
+        self.intervalo_spin.setValue(5)
+        self.intervalo_spin.setSuffix("s")
+        self.intervalo_spin.setFixedSize(44, 22)
+        self.intervalo_spin.setStyleSheet("QSpinBox { font-size: 10px; padding: 1px 2px; border: 1px solid #d1d5db; border-radius: 3px; }")
+        intervalo_layout.addWidget(self.intervalo_spin)
+        lbl_entre = QLabel("entre envios")
+        lbl_entre.setStyleSheet("font-size: 10px; color: #6b7280;")
+        intervalo_layout.addWidget(lbl_entre)
+        intervalo_widget.setLayout(intervalo_layout)
+        btn_layout.addWidget(intervalo_widget)
+
+        self.btn_enviar = QPushButton("Enviar")
+        self.btn_enviar.setFixedSize(56, 22)
+        self.btn_enviar.setCursor(Qt.PointingHandCursor)
+        self.btn_enviar.setStyleSheet("""
+            QPushButton { background-color: #16a34a; color: #ffffff; font-weight: bold; font-size: 10px; border: none; border-radius: 3px; padding: 2px 10px; }
+            QPushButton:hover { background-color: #15803d; }
+            QPushButton:disabled { background-color: #9ca3af; }
+        """)
+        btn_layout.addWidget(self.btn_enviar)
+
+        composer_layout.addWidget(barra_widget)
+
+        btn_previa.clicked.connect(self.atualizar_previa)
+        btn_limpar.clicked.connect(self.limpar_editor)
+        btn_html.clicked.connect(self.editar_html)
+        btn_salvar_template.clicked.connect(self.salvar_template)
+        btn_carregar_template.clicked.connect(self.carregar_template)
+        btn_sobrescrever.clicked.connect(self.sobrescrever_template)
+        self.btn_enviar.clicked.connect(self.enviar_emails)
+
+        composer_widget.setLayout(composer_layout)
+
+        # === Aba 2: Logs ===
+        log_tab = self._criar_aba_logs()
+
+        self.main_tabs.addTab(composer_widget, "Compor Email")
+        self.main_tabs.addTab(log_tab, "Logs")
+
+        layout.addWidget(self.main_tabs, 1)
+        self.setLayout(layout)
+
+        self._aplicar_estilos()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(100, self._ajustar_splitter)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+    def _ajustar_splitter(self):
+        w = self.width()
+        if hasattr(self, 'splitter') and w > 100:
+            self.splitter.setSizes([int(w * 0.50), int(w * 0.50)])
+
+    def _criar_painel_editor(self):
+        panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(6)
+
+        lbl_assunto = QLabel("Assunto:")
+        lbl_assunto.setStyleSheet("font-weight: bold; font-size: 11px; color: #1f2937;")
+        layout.addWidget(lbl_assunto)
+        self.email_assunto = QLineEdit()
+        self.email_assunto.setPlaceholderText("Ex: Lembrete - Curso amanhã às 08:00")
+        self.email_assunto.textChanged.connect(self._marcar_template_modificado)
+        self.email_assunto.setStyleSheet("font-size: 12px; padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 4px; background: #ffffff;")
+        layout.addWidget(self.email_assunto)
+
+        lbl_dest = QLabel("Destinatários:")
+        lbl_dest.setStyleSheet("font-weight: bold; font-size: 11px; color: #1f2937;")
+        layout.addWidget(lbl_dest)
+        self.email_destinatarios = QTextEdit()
+        self.email_destinatarios.setPlaceholderText("email1@email.com\nemail2@email.com")
+        self.email_destinatarios.setFixedHeight(48)
+        self.email_destinatarios.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.email_destinatarios.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; border: 1px solid #d1d5db; border-radius: 4px; padding: 4px; background: #ffffff;")
+        self.email_destinatarios.textChanged.connect(self.carregar_info_previa)
+        layout.addWidget(self.email_destinatarios)
+
+        self.email_cabecalho = EmailEditor()
+        self.email_cabecalho.setPlaceholderText("Cabeçalho do email...")
+        layout.addWidget(self._secao_email("Cabeçalho", self.email_cabecalho, 90))
+
+        self.email_corpo = EmailEditor()
+        self.email_corpo.setPlaceholderText("Corpo principal do email...")
+        layout.addWidget(self._secao_email("Corpo", self.email_corpo, 140))
+
+        self.email_rodape = EmailEditor()
+        self.email_rodape.setPlaceholderText("Rodapé do email...")
+        layout.addWidget(self._secao_email("Rodapé", self.email_rodape, 90))
+
+        panel.setLayout(layout)
+        return panel
+
+    def _criar_painel_previa(self):
+        panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(6)
+
+        lbl_previa = QLabel("Pré-visualização do E-mail")
+        lbl_previa.setStyleSheet("font-weight: bold; font-size: 12px; color: #1f2937;")
+        layout.addWidget(lbl_previa)
+
+        self.email_previa = QTextEdit()
+        self.email_previa.setReadOnly(True)
+        self.email_previa.setStyleSheet("background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;")
+        self.email_previa.document().setDocumentMargin(16)
+        self.email_previa.setHtml(
+            "<p style='color:#9ca3af; text-align:center; margin-top:40px; font-family:Segoe UI,Arial,sans-serif;'>"
+            "Selecione uma programação para ver a prévia</p>"
+        )
+        layout.addWidget(self.email_previa, 1)
+
+        self.email_info = QLabel("Nenhum email")
+        self.email_info.setAlignment(Qt.AlignRight)
+        self.email_info.setStyleSheet("background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: bold;")
+        layout.addWidget(self.email_info)
+
+        panel.setLayout(layout)
+        return panel
+
+    def _criar_aba_logs(self):
+        log_tab = QWidget()
+        log_layout = QVBoxLayout()
+        log_layout.setContentsMargins(8, 8, 8, 8)
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setPlaceholderText("Os logs do envio aparecerão aqui...")
+        self.log_text.setStyleSheet("font-family: Consolas, monospace; font-size: 11px; border: 1px solid #d1d5db; border-radius: 4px; padding: 8px;")
+        log_layout.addWidget(self.log_text, 1)
+
+        log_tab.setLayout(log_layout)
+        return log_tab
+
+    def _criar_toolbar(self, editor):
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(1)
+        toolbar.setContentsMargins(0, 0, 0, 0)
+
+        btn_bold = QPushButton("B")
+        btn_bold.setFixedSize(30, 24)
+        btn_bold.setToolTip("Negrito (Ctrl+B)")
+        btn_bold.setCursor(Qt.PointingHandCursor)
+        btn_bold.setStyleSheet("QPushButton { font-weight: bold; font-size: 12px; padding: 0px 2px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; background: #ffffff; } QPushButton:hover { background: #eef2ff; border-color: #6366f1; }")
+        btn_bold.clicked.connect(lambda: self._format_text(editor, "bold"))
+
+        btn_italic = QPushButton("I")
+        btn_italic.setFixedSize(30, 24)
+        btn_italic.setToolTip("Itálico (Ctrl+I)")
+        btn_italic.setCursor(Qt.PointingHandCursor)
+        btn_italic.setStyleSheet("QPushButton { font-style: italic; font-size: 12px; padding: 0px 2px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; background: #ffffff; } QPushButton:hover { background: #eef2ff; border-color: #6366f1; }")
+        btn_italic.clicked.connect(lambda: self._format_text(editor, "italic"))
+
+        btn_underline = QPushButton("U")
+        btn_underline.setFixedSize(30, 24)
+        btn_underline.setToolTip("Sublinhado (Ctrl+U)")
+        btn_underline.setCursor(Qt.PointingHandCursor)
+        btn_underline.setStyleSheet("QPushButton { text-decoration: underline; font-size: 12px; padding: 0px 2px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; background: #ffffff; } QPushButton:hover { background: #eef2ff; border-color: #6366f1; }")
+        btn_underline.clicked.connect(lambda: self._format_text(editor, "underline"))
+
+        biu_frame = QFrame()
+        biu_frame.setStyleSheet("QFrame { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; }")
+        biu_layout = QHBoxLayout(biu_frame)
+        biu_layout.setContentsMargins(1, 1, 1, 1)
+        biu_layout.setSpacing(1)
+        biu_layout.addWidget(btn_bold)
+        biu_layout.addWidget(btn_italic)
+        biu_layout.addWidget(btn_underline)
+        biu_layout.addStretch()
+        biu_frame.setFixedWidth(94)
+        toolbar.addWidget(biu_frame)
+
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.VLine)
+        sep1.setFrameShadow(QFrame.Plain)
+        sep1.setLineWidth(1)
+        sep1.setFixedHeight(18)
+        sep1.setStyleSheet("background-color: #d1d5db; border: none; color: transparent;")
+        toolbar.addWidget(sep1)
+
+        heading_combo = QComboBox()
+        heading_combo.setFixedHeight(24)
+        heading_combo.setMinimumWidth(0)
+        heading_combo.setMaximumWidth(64)
+        heading_combo.addItems(["Normal", "H1", "H2", "H3"])
+        heading_combo.setStyleSheet("QComboBox { font-size: 10px; padding: 1px 2px; border: 1px solid #d1d5db; border-radius: 3px; background: #ffffff; } QComboBox:hover { border-color: #6366f1; } QComboBox::drop-down { border: none; width: 14px; }")
+        heading_combo.currentTextChanged.connect(
+            lambda t: self._format_heading(editor, {"Normal": 0, "H1": 1, "H2": 2, "H3": 3}.get(t, 0))
+        )
+        toolbar.addWidget(heading_combo)
+
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.VLine)
+        sep2.setFrameShadow(QFrame.Plain)
+        sep2.setLineWidth(1)
+        sep2.setFixedHeight(18)
+        sep2.setStyleSheet("background-color: #d1d5db; border: none; color: transparent;")
+        toolbar.addWidget(sep2)
+
+        btn_color = QPushButton("A")
+        btn_color.setFixedSize(30, 24)
+        btn_color.setToolTip("Cor da Fonte")
+        btn_color.setCursor(Qt.PointingHandCursor)
+        btn_color.setStyleSheet("QPushButton { font-weight: bold; font-size: 12px; padding: 0px 2px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #dc2626; background: #ffffff; } QPushButton:hover { background: #fef2f2; border-color: #ef4444; }")
+        btn_color.clicked.connect(lambda: self._escolher_cor(editor))
+        toolbar.addWidget(btn_color)
+
+        btn_bg = QPushButton("■")
+        btn_bg.setFixedSize(30, 24)
+        btn_bg.setToolTip("Cor de Fundo")
+        btn_bg.setCursor(Qt.PointingHandCursor)
+        btn_bg.setStyleSheet("QPushButton { font-size: 13px; padding: 0px 2px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #f59e0b; background: #ffffff; } QPushButton:hover { background: #fffbeb; border-color: #f59e0b; }")
+        btn_bg.clicked.connect(lambda: self._escolher_cor_fundo(editor))
+        toolbar.addWidget(btn_bg)
+
+        sep3 = QFrame()
+        sep3.setFrameShape(QFrame.VLine)
+        sep3.setFrameShadow(QFrame.Plain)
+        sep3.setLineWidth(1)
+        sep3.setFixedHeight(18)
+        sep3.setStyleSheet("background-color: #d1d5db; border: none; color: transparent;")
+        toolbar.addWidget(sep3)
+
+        btn_align_left = QPushButton("≡")
+        btn_align_left.setFixedSize(32, 24)
+        btn_align_left.setToolTip("Alinhar à Esquerda")
+        btn_align_left.setCursor(Qt.PointingHandCursor)
+        btn_align_left.setStyleSheet("QPushButton { font-size: 12px; padding: 0px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; background: #ffffff; } QPushButton:hover { background: #f0f9ff; border-color: #0ea5e9; }")
+        btn_align_left.clicked.connect(lambda: self._format_align(editor, "left"))
+        toolbar.addWidget(btn_align_left)
+
+        btn_align_center = QPushButton("=")
+        btn_align_center.setFixedSize(32, 24)
+        btn_align_center.setToolTip("Centralizar")
+        btn_align_center.setCursor(Qt.PointingHandCursor)
+        btn_align_center.setStyleSheet("QPushButton { font-size: 12px; padding: 0px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; background: #ffffff; } QPushButton:hover { background: #f0f9ff; border-color: #0ea5e9; }")
+        btn_align_center.clicked.connect(lambda: self._format_align(editor, "center"))
+        toolbar.addWidget(btn_align_center)
+
+        btn_align_right = QPushButton("≡")
+        btn_align_right.setFixedSize(32, 24)
+        btn_align_right.setToolTip("Alinhar à Direita")
+        btn_align_right.setCursor(Qt.PointingHandCursor)
+        btn_align_right.setStyleSheet("QPushButton { font-size: 12px; padding: 0px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #374151; background: #ffffff; } QPushButton:hover { background: #f0f9ff; border-color: #0ea5e9; }")
+        btn_align_right.clicked.connect(lambda: self._format_align(editor, "right"))
+        toolbar.addWidget(btn_align_right)
+
+        align_frame = QFrame()
+        align_frame.setStyleSheet("QFrame { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; }")
+        align_layout = QHBoxLayout(align_frame)
+        align_layout.setContentsMargins(1, 1, 1, 1)
+        align_layout.setSpacing(1)
+        align_layout.addWidget(btn_align_left)
+        align_layout.addWidget(btn_align_center)
+        align_layout.addWidget(btn_align_right)
+        align_layout.addStretch()
+        align_frame.setFixedWidth(100)
+        toolbar.addWidget(align_frame)
+
+        sep4 = QFrame()
+        sep4.setFrameShape(QFrame.VLine)
+        sep4.setFrameShadow(QFrame.Plain)
+        sep4.setLineWidth(1)
+        sep4.setFixedHeight(18)
+        sep4.setStyleSheet("background-color: #d1d5db; border: none; color: transparent;")
+        toolbar.addWidget(sep4)
+
+        btn_link = QPushButton("Link")
+        btn_link.setFixedSize(44, 24)
+        btn_link.setToolTip("Inserir Link")
+        btn_link.setCursor(Qt.PointingHandCursor)
+        btn_link.setStyleSheet("QPushButton { font-size: 10px; padding: 0px 3px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #2563eb; background: #ffffff; } QPushButton:hover { background: #eff6ff; border-color: #2563eb; }")
+        btn_link.clicked.connect(lambda: self._inserir_link(editor))
+        btn_image = QPushButton("Imagem")
+        btn_image.setFixedSize(48, 24)
+        btn_image.setToolTip("Inserir Imagem")
+        btn_image.setCursor(Qt.PointingHandCursor)
+        btn_image.setStyleSheet("QPushButton { font-size: 10px; padding: 0px 3px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #2563eb; background: #ffffff; } QPushButton:hover { background: #eff6ff; border-color: #2563eb; }")
+        btn_image.clicked.connect(lambda: self._inserir_imagem(editor))
+        btn_button = QPushButton("Botão")
+        btn_button.setFixedSize(44, 24)
+        btn_button.setToolTip("Inserir Botão")
+        btn_button.setCursor(Qt.PointingHandCursor)
+        btn_button.setStyleSheet("QPushButton { font-size: 10px; padding: 0px 3px; min-width: 0px; min-height: 0px; border: 1px solid #d1d5db; border-radius: 3px; color: #2563eb; background: #ffffff; } QPushButton:hover { background: #eff6ff; border-color: #2563eb; }")
+        btn_button.clicked.connect(lambda: self._inserir_botao(editor))
+
+        ins_frame = QFrame()
+        ins_frame.setStyleSheet("QFrame { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; }")
+        ins_layout = QHBoxLayout(ins_frame)
+        ins_layout.setContentsMargins(1, 1, 1, 1)
+        ins_layout.setSpacing(1)
+        ins_layout.addWidget(btn_link)
+        ins_layout.addWidget(btn_image)
+        ins_layout.addWidget(btn_button)
+        ins_layout.addStretch()
+        ins_frame.setFixedWidth(140)
+        toolbar.addWidget(ins_frame)
+
+        sep5 = QFrame()
+        sep5.setFrameShape(QFrame.VLine)
+        sep5.setFrameShadow(QFrame.Plain)
+        sep5.setLineWidth(1)
+        sep5.setFixedHeight(18)
+        sep5.setStyleSheet("background-color: #d1d5db; border: none; color: transparent;")
+        toolbar.addWidget(sep5)
+
+        toolbar.addStretch()
+
+        variaveis_combo = QComboBox()
+        variaveis_combo.setFixedHeight(24)
+        variaveis_combo.setMinimumWidth(0)
+        variaveis_combo.setMaximumWidth(100)
+        variaveis_combo.addItem("Variável...")
+        variaveis_combo.addItems([
+            "{{nome_curso}}", "{{data_curso}}", "{{hora_curso}}",
+            "{{nome_instrutor}}", "{{carga_horaria}}", "{{tema_curso}}",
+        ])
+        variaveis_combo.setStyleSheet("QComboBox { font-size: 10px; padding: 1px 2px; border: 1px solid #d1d5db; border-radius: 3px; background: #ffffff; } QComboBox:hover { border-color: #6366f1; } QComboBox::drop-down { border: none; width: 14px; }")
+        variaveis_combo.currentIndexChanged.connect(lambda idx, e=editor, v=variaveis_combo: self._inserir_variavel(e, v, idx))
+        toolbar.addWidget(variaveis_combo)
+
+        return toolbar
+
+    def _secao_email(self, titulo, editor, min_height=90):
+        group = QGroupBox(titulo)
+        group.setFlat(False)
+        group.setStyleSheet("QGroupBox { font-weight: bold; font-size: 10px; color: #374151; border: 1px solid #e2e8f0; border-radius: 5px; margin-top: 10px; padding-top: 14px; background: #ffffff; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; color: #1e40af; }")
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(8, 8, 8, 6)
+        layout.setSpacing(4)
+        toolbar = self._criar_toolbar(editor)
+        layout.addLayout(toolbar)
+        editor.setMinimumHeight(min_height)
+        editor.textChanged.connect(self.atualizar_previa)
+        editor.textChanged.connect(self._marcar_template_modificado)
+        editor.edit_button_signal.connect(lambda act, e=editor: self._acao_botao_context_menu(e, act))
+        layout.addWidget(editor)
+        return group
+
+    def _aplicar_estilos(self):
+        self.setStyleSheet("""
+            EnviarEmailsWindow { background: #f8fafc; }
+            QLabel { color: #1f2937; font-size: 11px; }
+            QTextEdit, QLineEdit, QComboBox, QSpinBox { border: 1px solid #d1d5db; border-radius: 3px; padding: 3px 6px; font-size: 11px; background: #ffffff; }
+            QTextEdit:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #6366f1; }
+        """)
+
+    def _editor_atual(self):
+        for e in [self.email_cabecalho, self.email_corpo, self.email_rodape]:
+            if e.hasFocus():
+                return e
+        return self.email_corpo
+
+    def _format_text(self, editor, fmt):
+        cursor = editor.textCursor()
+        if fmt == "bold":
+            editor.setFontWeight(75 if cursor.charFormat().fontWeight() < 75 else 50)
+        elif fmt == "italic":
+            editor.setFontItalic(not cursor.charFormat().fontItalic())
+        elif fmt == "underline":
+            editor.setFontUnderline(not cursor.charFormat().fontUnderline())
+        editor.setFocus()
+
+    def _format_heading(self, editor, level):
+        if level == 0: editor.setFontPointSize(12)
+        elif level == 1: editor.setFontPointSize(24)
+        elif level == 2: editor.setFontPointSize(18)
+        elif level == 3: editor.setFontPointSize(14)
+        editor.setFocus()
+
+    def _format_align(self, editor, align):
+        if align == "left": editor.setAlignment(Qt.AlignLeft)
+        elif align == "center": editor.setAlignment(Qt.AlignCenter)
+        elif align == "right": editor.setAlignment(Qt.AlignRight)
+
+    def _escolher_cor(self, editor):
+        from PyQt5.QtGui import QColor
+        from PyQt5.QtWidgets import QColorDialog
+        color = QColorDialog.getColor(QColor("#e74c3c"), self, "Escolher Cor da Fonte")
+        if color.isValid():
+            cursor = editor.textCursor()
+            fmt = cursor.charFormat()
+            fmt.setForeground(color)
+            cursor.setCharFormat(fmt)
+            editor.setFocus()
+
+    def _escolher_cor_fundo(self, editor):
+        from PyQt5.QtGui import QColor
+        from PyQt5.QtWidgets import QColorDialog
+        color = QColorDialog.getColor(QColor("#f1c40f"), self, "Escolher Cor de Fundo")
+        if color.isValid():
+            cursor = editor.textCursor()
+            block_fmt = cursor.blockFormat()
+            block_fmt.setBackground(color)
+            cursor.setBlockFormat(block_fmt)
+            editor.setFocus()
+
+    def _inserir_link(self, editor):
+        url, ok = QInputDialog.getText(self, "Inserir Link", "URL:")
+        if ok and url:
+            text, ok2 = QInputDialog.getText(self, "Texto do Link", "Texto (opcional):")
+            if ok2 and text:
+                link_text = text if text else url
+                html = f'<a href="{url}">{link_text}</a>'
+                editor.insertHtml(html)
+
+    def _dialogo_botao(self, dados_iniciais=None):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Botão" if not dados_iniciais else "Editar Botão")
+        dialog.setGeometry(300, 300, 400, 420)
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(8)
+
+        layout.addWidget(QLabel("Texto do Botão:"))
+        texto_input = QLineEdit(dados_iniciais.get('texto', '') if dados_iniciais else '')
+        texto_input.setPlaceholderText("Ex: Inscreva-se")
+        layout.addWidget(texto_input)
+
+        layout.addWidget(QLabel("Link (URL):"))
+        url_input = QLineEdit(dados_iniciais.get('url', '') if dados_iniciais else '')
+        url_input.setPlaceholderText("Ex: https://exemplo.com/curso")
+        layout.addWidget(url_input)
+
+        layout.addWidget(QLabel("Cor do Botão:"))
+        cor_combo = QComboBox()
+        cor_combo.addItems(["Azul", "Verde", "Vermelho", "Laranja", "Roxo", "Cinza"])
+        if dados_iniciais:
+            cor_map = {"#3498db": "Azul", "#27ae60": "Verde", "#e74c3c": "Vermelho", "#e67e22": "Laranja", "#8e44ad": "Roxo", "#7f8c8d": "Cinza"}
+            cor_combo.setCurrentText(cor_map.get(dados_iniciais.get('cor', '#3498db'), "Azul"))
+        layout.addWidget(cor_combo)
+
+        layout.addWidget(QLabel("Arredondamento:"))
+        raio_combo = QComboBox()
+        raio_combo.addItems(["Nenhum (0px)", "Pouco (4px)", "Médio (8px)", "Muito (15px)", "Total (25px)"])
+        if dados_iniciais:
+            raio_map = {"0": "Nenhum (0px)", "4": "Pouco (4px)", "8": "Médio (8px)", "15": "Muito (15px)", "25": "Total (25px)"}
+            raio_combo.setCurrentText(raio_map.get(dados_iniciais.get('raio', '8'), "Médio (8px)"))
+        layout.addWidget(raio_combo)
+
+        layout.addWidget(QLabel("Preenchimento Vertical:"))
+        pad_v_combo = QComboBox()
+        pad_v_combo.addItems(["Pequeno (6px)", "Médio (12px)", "Grande (18px)"])
+        if dados_iniciais:
+            pad_v_map = {"6": "Pequeno (6px)", "12": "Médio (12px)", "18": "Grande (18px)"}
+            pad_v_combo.setCurrentText(pad_v_map.get(dados_iniciais.get('pad_v', '12'), "Médio (12px)"))
+        layout.addWidget(pad_v_combo)
+
+        layout.addWidget(QLabel("Preenchimento Horizontal:"))
+        pad_h_combo = QComboBox()
+        pad_h_combo.addItems(["Pequeno (12px)", "Médio (24px)", "Grande (36px)"])
+        if dados_iniciais:
+            pad_h_map = {"12": "Pequeno (12px)", "24": "Médio (24px)", "36": "Grande (36px)"}
+            pad_h_combo.setCurrentText(pad_h_map.get(dados_iniciais.get('pad_h', '24'), "Médio (24px)"))
+        layout.addWidget(pad_h_combo)
+
+        layout.addWidget(QLabel("Alinhamento:"))
+        align_combo = QComboBox()
+        align_combo.addItems(["Esquerda", "Centro", "Direita"])
+        if dados_iniciais:
+            align_map = {"left": "Esquerda", "center": "Centro", "right": "Direita"}
+            align_combo.setCurrentText(align_map.get(dados_iniciais.get('align', 'center'), "Centro"))
+        layout.addWidget(align_combo)
+
+        btn_layout = QHBoxLayout()
+        btn_ok = QPushButton("OK" if not dados_iniciais else "Atualizar")
+        btn_ok.clicked.connect(dialog.accept)
+        btn_ok.setCursor(Qt.PointingHandCursor)
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_layout.addWidget(btn_ok)
+        btn_layout.addWidget(btn_cancel)
+        layout.addLayout(btn_layout)
+
+        if dialog.exec_() == QDialog.Accepted:
+            cores = {"Azul": "#3498db", "Verde": "#27ae60", "Vermelho": "#e74c3c", "Laranja": "#e67e22", "Roxo": "#8e44ad", "Cinza": "#7f8c8d"}
+            raios = {"Nenhum (0px)": "0", "Pouco (4px)": "4", "Médio (8px)": "8", "Muito (15px)": "15", "Total (25px)": "25"}
+            pads_v = {"Pequeno (6px)": "6", "Médio (12px)": "12", "Grande (18px)": "18"}
+            pads_h = {"Pequeno (12px)": "12", "Médio (24px)": "24", "Grande (36px)": "36"}
+            align_map = {"Esquerda": "left", "Centro": "center", "Direita": "right"}
+            return {
+                'texto': texto_input.text().strip() or "Clique Aqui",
+                'url': url_input.text().strip() or "#",
+                'cor': cores[cor_combo.currentText()],
+                'raio': raios[raio_combo.currentText()],
+                'pad_v': pads_v[pad_v_combo.currentText()],
+                'pad_h': pads_h[pad_h_combo.currentText()],
+                'align': align_map[align_combo.currentText()]
+            }
+        return None
+
+    def _inserir_botao(self, editor):
+        dados = self._dialogo_botao()
+        if dados:
+            params = urlencode(dados)
+            href = f"btn://data?{params}"
+            html = f'<a href="{href}" style="background-color:{dados["cor"]}; color:white; padding:{dados["pad_v"]}px {dados["pad_h"]}px; text-decoration:none; font-weight:bold; display:inline-block; font-size:14px; border-radius:{dados["raio"]}px;">{dados["texto"]}</a>'
+            editor.insertHtml(html)
+
+    def _editar_botao(self, editor):
+        cursor = editor.textCursor()
+        fmt = cursor.charFormat()
+        if not fmt.isAnchor() or not fmt.anchorHref().startswith('btn://'):
+            QMessageBox.information(self, "Editar Botão", "Posicione o cursor sobre um botão e clique com botão direito.")
+            return
+        href = fmt.anchorHref()
+        qs = parse_qs(href.split('?', 1)[1])
+        dados_iniciais = {
+            'texto': qs.get('text', [''])[0], 'url': qs.get('url', [''])[0],
+            'cor': qs.get('color', ['#3498db'])[0], 'raio': qs.get('radius', ['8'])[0],
+            'pad_v': qs.get('pad_v', ['12'])[0], 'pad_h': qs.get('pad_h', ['24'])[0],
+            'align': qs.get('align', ['center'])[0]
+        }
+        dados = self._dialogo_botao(dados_iniciais)
+        if dados:
+            params = urlencode(dados)
+            novo_href = f"btn://data?{params}"
+            nova_tag = f'<a href="{novo_href}" style="background-color:{dados["cor"]}; color:white; padding:{dados["pad_v"]}px {dados["pad_h"]}px; text-decoration:none; font-weight:bold; display:inline-block; font-size:14px; border-radius:{dados["raio"]}px;">{dados["texto"]}</a>'
+            html = editor.toHtml()
+            html = re.sub(rf'href="{re.escape(href)}"[^>]*>.*?</a>', nova_tag, html, flags=re.DOTALL)
+            editor.setHtml(html)
+
+    def _acao_botao_context_menu(self, editor, action):
+        cursor = editor.textCursor()
+        fmt = cursor.charFormat()
+        if action == 'edit':
+            self._editar_botao(editor)
+        elif action == 'remove':
+            if fmt.isAnchor() and fmt.anchorHref().startswith('btn://'):
+                href = fmt.anchorHref()
+                html = editor.toHtml()
+                html = re.sub(rf'href="{re.escape(href)}"[^>]*>.*?</a>', '', html, count=1, flags=re.DOTALL)
+                editor.setHtml(html)
+
+    def _inserir_imagem(self, editor):
+        arquivo, _ = QFileDialog.getOpenFileName(self, "Selecionar Imagem", "", "Imagens (*.png *.jpg *.jpeg *.gif *.bmp)")
+        if not arquivo:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Imagem")
+        dialog.setGeometry(300, 300, 320, 220)
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(8)
+        layout.addWidget(QLabel("Tamanho:"))
+        tamanho_combo = QComboBox()
+        tamanho_combo.addItems(["Pequena (25%)", "Media (50%)", "Grande (75%)", "Total (100%)"])
+        tamanho_combo.setCurrentIndex(1)
+        layout.addWidget(tamanho_combo)
+        layout.addWidget(QLabel("Alinhamento:"))
+        alinhamento_combo = QComboBox()
+        alinhamento_combo.addItems(["Esquerda", "Centro", "Direita"])
+        layout.addWidget(alinhamento_combo)
+        btn_layout = QHBoxLayout()
+        btn_ok = QPushButton("Inserir")
+        btn_ok.clicked.connect(dialog.accept)
+        btn_ok.setCursor(Qt.PointingHandCursor)
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_layout.addWidget(btn_ok)
+        btn_layout.addWidget(btn_cancel)
+        layout.addLayout(btn_layout)
+
+        if dialog.exec_() == QDialog.Accepted:
+            import base64
+            with open(arquivo, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            ext = os.path.splitext(arquivo)[1].lower()
+            mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "bmp": "image/bmp"}.get(ext[1:], "image/png")
+            pcts = {"Pequena (25%)": 0.25, "Media (50%)": 0.5, "Grande (75%)": 0.75, "Total (100%)": 1}
+            pct = pcts[tamanho_combo.currentText()]
+            align = {"Esquerda": "left", "Centro": "center", "Direita": "right"}[alinhamento_combo.currentText()]
+            img_id = self._img_counter
+            self._img_counter += 1
+            editor_width = editor.viewport().width()
+            px = int(editor_width * pct)
+            self._imagens[str(img_id)] = {'b64': b64, 'mime': mime, 'px': px, 'align': align}
+            editor.insertPlainText(f"_IMG_{img_id}_{px}_{align}_")
+
+    def _inserir_variavel(self, editor, combo, index):
+        if index > 0:
+            var = combo.currentText()
+            editor.insertPlainText(var)
+            combo.setCurrentIndex(0)
+
+    def _html_body(self, editor):
+        raw = editor.toHtml()
+        m = re.search(r'<body[^>]*>(.*)</body>', raw, re.DOTALL)
+        content = m.group(1).strip() if m else raw
+        content = re.sub(r'</?(?:html|head|body|meta|!DOCTYPE)[^>]*>', '', content, flags=re.DOTALL)
+        content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL)
+        return content
+
+    def _secao_html_isolada(self, editor):
+        raw = editor.toHtml()
+        m_body = re.search(r'<body([^>]*)>(.*)</body>', raw, re.DOTALL)
+        if m_body:
+            body_attrs = m_body.group(1)
+            content = m_body.group(2).strip()
+            m_style = re.search(r'style="([^"]*)"', body_attrs)
+            body_style = m_style.group(1) if m_style else ""
+        else:
+            content = raw
+            body_style = ""
+        content = re.sub(r'</?(?:html|head|body|meta|!DOCTYPE)[^>]*>', '', content, flags=re.DOTALL)
+        content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL)
+        return f'<table width="100%" cellpadding="12" cellspacing="0" style="border-collapse:collapse; {body_style}"><tr><td>{content}</td></tr></table>'
+
+    def atualizar_previa(self):
+        if not self.prog_id:
+            self.email_previa.setHtml("<p style='color:#999;text-align:center;padding:20px;'>Selecione uma programação para ver a prévia</p>")
+            return
+        assunto = self.email_assunto.text()
+        cab = self._secao_html_isolada(self.email_cabecalho)
+        corpo = self._secao_html_isolada(self.email_corpo)
+        rodape = self._secao_html_isolada(self.email_rodape)
+        separador = '<hr style="border: none; border-top: 2px dashed #ccc; margin: 12px 0;">'
+        partes = [p for p in [cab, corpo, rodape] if p]
+        html = separador.join(partes) if partes else ""
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT c.nome, c.tema, c.descricao, c.carga_horaria, i.nome, i.empresa, cd.hora FROM cursos_datas cd JOIN cursos c ON c.id = cd.curso_id JOIN instrutores i ON i.id = cd.instrutor_id WHERE cd.id = ?", (self.prog_id,))
+            curso_info = cursor.fetchone()
+            conn.close()
+            if curso_info:
+                curso_nome, tema, descricao, carga_horaria, instrutor_nome, instrutor_empresa, hora = curso_info
+                data_formatada = QDate.fromString(self.data, "yyyy-MM-dd").toString("dd/MM/yyyy")
+                preview_html = html.replace("{{nome_curso}}", f"<strong>{curso_nome or ''}</strong>").replace("{{data_curso}}", f"<strong>{data_formatada}</strong>").replace("{{hora_curso}}", f"<strong>{hora or ''}</strong>").replace("{{nome_instrutor}}", f"<strong>{instrutor_nome or ''}</strong>").replace("{{carga_horaria}}", f"<strong>{carga_horaria}h</strong>" if carga_horaria else "").replace("{{tema_curso}}", f"<strong>{tema or ''}</strong>")
+                preview_html = preview_html.replace("{{empresa_instrutor}}", f"<strong>{instrutor_empresa or ''}</strong>").replace("{{nome_aluno}}", "")
+            else:
+                preview_html = html.replace("{{nome_curso}}", "<strong>[Nome do Curso]</strong>").replace("{{data_curso}}", "<strong>[Data]</strong>").replace("{{hora_curso}}", "<strong>[Hora]</strong>").replace("{{nome_instrutor}}", "<strong>[Instrutor]</strong>").replace("{{empresa_instrutor}}", "<strong>[Empresa]</strong>").replace("{{carga_horaria}}", "<strong>[Carga Horária]</strong>").replace("{{tema_curso}}", "<strong>[Tema]</strong>").replace("{{nome_aluno}}", "")
+        except:
+            preview_html = html.replace("{{nome_curso}}", "<strong>[Nome do Curso]</strong>").replace("{{data_curso}}", "<strong>[Data]</strong>").replace("{{hora_curso}}", "<strong>[Hora]</strong>").replace("{{nome_instrutor}}", "<strong>[Instrutor]</strong>").replace("{{empresa_instrutor}}", "<strong>[Empresa]</strong>").replace("{{carga_horaria}}", "<strong>[Carga Horária]</strong>").replace("{{tema_curso}}", "<strong>[Tema]</strong>").replace("{{nome_aluno}}", "")
+        preview_html = _converter_botoes_para_html(preview_html)
+        preview_html = _converter_imagens_para_html(preview_html, self._imagens)
+        preview_html = re.sub(r'<html[^>]*>|<head>.*?</head>|<body[^>]*>|</html>|</body>', '', preview_html, flags=re.DOTALL).strip()
+        self.email_previa.setHtml(f"""<div align="center" style="font-family: 'Segoe UI', Arial, sans-serif; background: #f0f0f0; padding: 20px;"><table cellpadding="0" cellspacing="0" style="width: 100%; background: #ffffff; border-radius: 6px; border: 1px solid #ddd;"><tr><td style="padding: 14px 20px 8px 20px; background: #f9f9f9; border-bottom: 1px solid #e0e0e0;"><div style="font-size: 13px; color: #555;"><b style="color: #333;">De:</b> sistema@gestorcursos.com &nbsp;|&nbsp; <b style="color: #333;">Para:</b> destinatario@email.com &nbsp;|&nbsp; <b style="color: #333;">Assunto:</b> {assunto or '(sem assunto)'}</div></td></tr><tr><td style="padding: 0;">{preview_html}</td></tr><tr><td align="center" style="padding: 10px; font-size: 11px; color: #999; border-top: 1px solid #eee;">Prévia visual - variáveis serão substituídas no envio real</td></tr></table></div>""")
+
+    def carregar_info_previa(self):
+        try:
+            texto_emails = self.email_destinatarios.toPlainText().strip()
+            if texto_emails:
+                emails_colados = [e.strip() for e in re.split(r'[,;\n]+', texto_emails) if e.strip() and "@" in e.strip()]
+                self.email_info.setText(f"{len(emails_colados)} destinatário(s)")
+            else:
+                self.email_info.setText("Nenhum email")
+        except:
+            self.email_info.setText("Erro ao carregar info")
+
+    def limpar_editor(self):
+        self.email_assunto.clear()
+        self.email_cabecalho.clear()
+        self.email_corpo.clear()
+        self.email_rodape.clear()
+        self.email_destinatarios.clear()
+        self._template_atual = None
+        self._template_modificado = False
+        self._atualizar_botao_salvar_alteracoes()
+        self.atualizar_previa()
+        self.carregar_info_previa()
+
+    def salvar_template(self):
+        nome_padrao = self._template_atual or ""
+        nome, ok = QInputDialog.getText(self, "Salvar Template", "Nome do template:", text=nome_padrao)
+        if ok and nome:
+            self._salvar_template_por_nome(nome)
+
+    def sobrescrever_template(self):
+        if not self._template_atual:
+            QMessageBox.warning(self, "Aviso", "Nenhum template carregado. Use 'Salvar' para criar um novo.")
+            return
+        self._salvar_template_por_nome(self._template_atual)
+
+    def _salvar_template_por_nome(self, nome):
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE IF NOT EXISTS email_templates (id INTEGER PRIMARY KEY, nome TEXT UNIQUE, assunto TEXT, corpo_html TEXT)")
+            cursor.execute("PRAGMA table_info(email_templates)")
+            cols = [r[1] for r in cursor.fetchall()]
+            if 'corpo_cabecario' not in cols: cursor.execute("ALTER TABLE email_templates ADD COLUMN corpo_cabecario TEXT")
+            if 'corpo_rodape' not in cols: cursor.execute("ALTER TABLE email_templates ADD COLUMN corpo_rodape TEXT")
+            cursor.execute("INSERT OR REPLACE INTO email_templates (nome, assunto, corpo_html, corpo_cabecario, corpo_rodape) VALUES (?, ?, ?, ?, ?)", (nome, self.email_assunto.text(), self._html_body(self.email_corpo), self._html_body(self.email_cabecalho), self._html_body(self.email_rodape)))
+            conn.commit()
+            conn.close()
+            self._template_atual = nome
+            self._template_modificado = False
+            self._atualizar_botao_salvar_alteracoes()
+            QMessageBox.information(self, "Sucesso", f"Template '{nome}' salvo!")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao salvar template: {str(e)}")
+
+    def _marcar_template_modificado(self):
+        if not self._template_modificado and self._template_atual:
+            self._template_modificado = True
+            self._atualizar_botao_salvar_alteracoes()
+
+    def _atualizar_botao_salvar_alteracoes(self):
+        self.btn_salvar_alteracoes.setEnabled(self._template_atual is not None and self._template_modificado)
+
+    def editar_html(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Editar HTML")
+        dialog.setGeometry(300, 300, 700, 500)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("HTML completo do email (cabeçário + corpo + rodapé):"))
+        editor = QPlainTextEdit()
+        combined = f"<!-- CABECALHO -->\n{self._html_body(self.email_cabecalho)}\n<!-- CORPO -->\n{self._html_body(self.email_corpo)}\n<!-- RODAPE -->\n{self._html_body(self.email_rodape)}"
+        editor.setPlainText(combined)
+        editor.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
+        layout.addWidget(editor)
+        btn_layout = QHBoxLayout()
+        btn_aplicar = QPushButton("Aplicar")
+        btn_aplicar.clicked.connect(dialog.accept)
+        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.clicked.connect(dialog.reject)
+        btn_layout.addWidget(btn_aplicar)
+        btn_layout.addWidget(btn_cancelar)
+        layout.addLayout(btn_layout)
+        if dialog.exec_() == QDialog.Accepted:
+            html = editor.toPlainText().strip()
+            if html:
+                m_cab = re.search(r'<!-- CABECALHO -->(.*?)<!-- CORPO -->', html, re.DOTALL)
+                m_corp = re.search(r'<!-- CORPO -->(.*?)<!-- RODAPE -->', html, re.DOTALL)
+                m_rod = re.search(r'<!-- RODAPE -->(.*)', html, re.DOTALL)
+                if m_cab and m_corp and m_rod:
+                    self.email_cabecalho.setHtml(m_cab.group(1).strip())
+                    self.email_corpo.setHtml(m_corp.group(1).strip())
+                    self.email_rodape.setHtml(m_rod.group(1).strip())
+                else:
+                    self.email_corpo.setHtml(html)
+                self.atualizar_previa()
+
+    def carregar_template(self):
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE IF NOT EXISTS email_templates (id INTEGER PRIMARY KEY, nome TEXT UNIQUE, assunto TEXT, corpo_html TEXT)")
+            try:
+                cursor.execute("SELECT nome, assunto, corpo_html, corpo_cabecario, corpo_rodape FROM email_templates")
+                templates = cursor.fetchall()
+            except sqlite3.OperationalError:
+                cursor.execute("SELECT nome, assunto, corpo_html FROM email_templates")
+                templates = [(r[0], r[1], r[2], None, None) for r in cursor.fetchall()]
+            conn.close()
+            if not templates:
+                QMessageBox.information(self, "Aviso", "Nenhum template salvo.")
+                return
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Gerenciar Templates")
+            dialog.setGeometry(300, 300, 500, 400)
+            layout = QVBoxLayout(dialog)
+            layout.addWidget(QLabel("Selecione um template:"))
+            list_widget = QListWidget()
+            for t in templates:
+                list_widget.addItem(t[0])
+            layout.addWidget(list_widget)
+            btn_layout = QHBoxLayout()
+            btn_carregar = QPushButton("Carregar")
+            btn_carregar.clicked.connect(dialog.accept)
+            btn_renomear = QPushButton("Renomear")
+            btn_excluir = QPushButton("Excluir")
+            btn_cancelar = QPushButton("Cancelar")
+            btn_cancelar.clicked.connect(dialog.reject)
+            btn_layout.addWidget(btn_carregar)
+            btn_layout.addWidget(btn_renomear)
+            btn_layout.addWidget(btn_excluir)
+            btn_layout.addWidget(btn_cancelar)
+            layout.addLayout(btn_layout)
+
+            def renomear():
+                item = list_widget.currentItem()
+                if not item:
+                    QMessageBox.warning(dialog, "Aviso", "Selecione um template.")
+                    return
+                novo_nome, ok = QInputDialog.getText(dialog, "Renomear", "Novo nome:", text=item.text())
+                if ok and novo_nome:
+                    try:
+                        conn2 = sqlite3.connect(DB_PATH)
+                        c2 = conn2.cursor()
+                        c2.execute("UPDATE email_templates SET nome = ? WHERE nome = ?", (novo_nome, item.text()))
+                        conn2.commit()
+                        conn2.close()
+                        item.setText(novo_nome)
+                        QMessageBox.information(dialog, "Sucesso", "Template renomeado!")
+                    except Exception as e:
+                        QMessageBox.critical(dialog, "Erro", str(e))
+
+            def excluir():
+                item = list_widget.currentItem()
+                if not item:
+                    QMessageBox.warning(dialog, "Aviso", "Selecione um template.")
+                    return
+                resp = QMessageBox.question(dialog, "Confirmar", f"Excluir template '{item.text()}'?", QMessageBox.Yes | QMessageBox.No)
+                if resp == QMessageBox.Yes:
+                    try:
+                        conn2 = sqlite3.connect(DB_PATH)
+                        c2 = conn2.cursor()
+                        c2.execute("DELETE FROM email_templates WHERE nome = ?", (item.text(),))
+                        conn2.commit()
+                        conn2.close()
+                        list_widget.takeItem(list_widget.row(item))
+                        QMessageBox.information(dialog, "Sucesso", "Template excluído!")
+                    except Exception as e:
+                        QMessageBox.critical(dialog, "Erro", str(e))
+
+            btn_renomear.clicked.connect(renomear)
+            btn_excluir.clicked.connect(excluir)
+
+            if dialog.exec_() == QDialog.Accepted:
+                item = list_widget.currentItem()
+                if not item:
+                    return
+                nome = item.text()
+                for row in templates:
+                    if row[0] == nome:
+                        t_cabecario = row[3] if len(row) > 3 else None
+                        t_rodape = row[4] if len(row) > 4 else None
+                        self.email_assunto.setText(row[1])
+                        self._template_atual = None
+                        self.email_cabecalho.setHtml(t_cabecario or "")
+                        self.email_corpo.setHtml(row[2] or "")
+                        self.email_rodape.setHtml(t_rodape or "")
+                        self._template_atual = nome
+                        self._template_modificado = False
+                        self._atualizar_botao_salvar_alteracoes()
+                        self.atualizar_previa()
+                        break
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao gerenciar templates: {str(e)}")
+
+    def _carregar_programacoes(self):
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT cd.id, c.nome, i.nome, cd.data, cd.hora FROM cursos_datas cd JOIN cursos c ON c.id = cd.curso_id JOIN instrutores i ON i.id = cd.instrutor_id ORDER BY cd.data DESC, cd.hora")
+            progs = cursor.fetchall()
+            conn.close()
+            self.combo_programacoes.clear()
+            self.combo_programacoes.addItem("Selecione uma programação...", None)
+            for prog_id, curso_nome, instrutor_nome, data, hora in progs:
+                data_fmt = QDate.fromString(data, "yyyy-MM-dd").toString("dd/MM/yyyy")
+                texto = f"{data_fmt} - {curso_nome} - {instrutor_nome} ({hora or '?'})"
+                self.combo_programacoes.addItem(texto, prog_id)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao carregar programações: {str(e)}")
+
+    def _ao_mudar_programacao(self, index):
+        prog_id = self.combo_programacoes.currentData()
+        if not prog_id:
+            self.prog_id = None
+            self.data = None
+            return
+        self.prog_id = prog_id
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT c.nome, c.tema, c.descricao, c.carga_horaria, i.nome, i.empresa, cd.data, cd.hora FROM cursos_datas cd JOIN cursos c ON c.id = cd.curso_id JOIN instrutores i ON i.id = cd.instrutor_id WHERE cd.id = ?", (prog_id,))
+            info = cursor.fetchone()
+            conn.close()
+            if info:
+                self.data = info[6]
+                self.atualizar_previa()
+        except Exception as e:
+            self.log(f"Erro ao carregar dados: {str(e)}")
+
+    def log(self, mensagem):
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.append(f"[{timestamp}] {mensagem}")
+
+    def enviar_emails(self):
+        if not self.prog_id:
+            QMessageBox.warning(self, "Erro", "Selecione uma programação primeiro.")
+            return
+        assunto = self.email_assunto.text().strip()
+        html_corpo = self._secao_html_isolada(self.email_cabecalho) + self._secao_html_isolada(self.email_corpo) + self._secao_html_isolada(self.email_rodape)
+        if not assunto or not html_corpo.strip():
+            QMessageBox.warning(self, "Erro", "Preencha o assunto e a mensagem.")
+            return
+        try:
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             cursor.execute("SELECT smtp_host, smtp_port, smtp_user, smtp_password, smtp_from_name, smtp_use_tls FROM email_config LIMIT 1")
             config = cursor.fetchone()
@@ -3459,33 +3797,19 @@ class DetalhesProgramacaoWindow(QDialog):
                 conn.close()
                 return
             smtp_host, smtp_port, smtp_user, smtp_password, smtp_from_name, smtp_use_tls = config
-
-            cursor.execute("""
-                SELECT c.nome, c.tema, c.descricao, c.carga_horaria, i.nome, i.empresa, cd.hora
-                FROM cursos_datas cd
-                JOIN cursos c ON c.id = cd.curso_id
-                JOIN instrutores i ON i.id = cd.instrutor_id
-                WHERE cd.id = ?
-            """, (self.prog_id,))
+            cursor.execute("SELECT c.nome, c.tema, c.descricao, c.carga_horaria, i.nome, i.empresa, cd.hora FROM cursos_datas cd JOIN cursos c ON c.id = cd.curso_id JOIN instrutores i ON i.id = cd.instrutor_id WHERE cd.id = ?", (self.prog_id,))
             curso_info = cursor.fetchone()
             conn.close()
-
             if not curso_info:
                 QMessageBox.warning(self, "Erro", "Informações do curso não encontradas.")
                 return
-
             curso_nome, tema, descricao, carga_horaria, instrutor_nome, instrutor_empresa, hora = curso_info
             data_formatada = QDate.fromString(self.data, "yyyy-MM-dd").toString("dd/MM/yyyy")
-
             variaveis = {
-                "{{nome_curso}}": curso_nome or "",
-                "{{data_curso}}": data_formatada,
-                "{{hora_curso}}": hora or "",
-                "{{nome_instrutor}}": instrutor_nome or "",
-                "{{carga_horaria}}": f"{carga_horaria}h" if carga_horaria else "",
-                "{{tema_curso}}": tema or "",
+                "{{nome_curso}}": curso_nome or "", "{{data_curso}}": data_formatada,
+                "{{hora_curso}}": hora or "", "{{nome_instrutor}}": instrutor_nome or "",
+                "{{carga_horaria}}": f"{carga_horaria}h" if carga_horaria else "", "{{tema_curso}}": tema or "",
             }
-
             texto_emails = self.email_destinatarios.toPlainText().strip()
             if not texto_emails:
                 QMessageBox.warning(self, "Erro", "Cole os emails no campo de destinatários.")
@@ -3494,27 +3818,21 @@ class DetalhesProgramacaoWindow(QDialog):
             if not emails:
                 QMessageBox.warning(self, "Erro", "Nenhum email válido encontrado no campo.")
                 return
-
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao buscar dados: {str(e)}")
             return
-
-        self.thread_envio = SendEmailThread(
-            emails, assunto, html_corpo, variaveis, instrutor_empresa,
-            smtp_host, smtp_port, smtp_user, smtp_password, smtp_from_name,
-            smtp_use_tls, self._imagens, self.intervalo_spin.value()
-        )
+        self.thread_envio = SendEmailThread(emails, assunto, html_corpo, variaveis, instrutor_empresa, smtp_host, smtp_port, smtp_user, smtp_password, smtp_from_name, smtp_use_tls, self._imagens, self.intervalo_spin.value())
         self.thread_envio.log_message.connect(lambda msg: self.log(msg))
         self.thread_envio.progress.connect(lambda atual, total: self.log(f"Progresso: {atual}/{total}"))
         self.thread_envio.error_smtp.connect(lambda err: QMessageBox.critical(self, "Erro SMTP", f"Erro na conexão SMTP: {err}"))
         self.thread_envio.finished_send.connect(self._envio_finalizado)
         self.btn_enviar.setEnabled(False)
-        self.btn_enviar.setText("⏳ Enviando...")
+        self.btn_enviar.setText("Enviando...")
         self.thread_envio.start()
 
     def _envio_finalizado(self, enviados, erros):
         self.btn_enviar.setEnabled(True)
-        self.btn_enviar.setText("📧 Enviar")
+        self.btn_enviar.setText("Enviar")
         msg = f"✅ Enviados: {enviados}\n"
         if erros:
             msg += f"❌ Erros: {len(erros)}\n\n" + "\n".join(erros[:10])
@@ -3523,7 +3841,6 @@ class DetalhesProgramacaoWindow(QDialog):
         QMessageBox.information(self, "Resultado do Envio", msg)
 
 
-# Janela principal com layout melhorado
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -3534,53 +3851,41 @@ class MainWindow(QMainWindow):
 
         self._setup_auto_update_timer()
 
-        # Widget central com layout principal
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
 
-        # Layout principal horizontal
         main_layout = QHBoxLayout()
         self.central_widget.setLayout(main_layout)
 
-        # =========================
-        # BARRA DE MENU SUPERIOR
-        # =========================
         menubar = self.menuBar()
         menubar.setObjectName("appMenuBar")
 
-        # Cadastros
         menu_cadastros = menubar.addMenu("Cadastros")
-        menu_cadastros.addAction(QAction("🔗 Associar Cursos a Instrutor", self, triggered=self.abrir_associar_curso))
-        menu_cadastros.addAction(QAction("📘 Cadastrar Curso", self, triggered=self.abrir_cadastro_curso))
-        menu_cadastros.addAction(QAction("🏷️ Cadastrar Temas e Subtemas", self, triggered=self.abrir_cadastrar_temas_subtemas))
-        menu_cadastros.addAction(QAction("👨‍🏫 Cadastrar Instrutor", self, triggered=self.abrir_cadastro_instrutor))
+        menu_cadastros.addAction(QAction("📋 Cadastrar Curso", self, triggered=self.abrir_cadastro_curso))
+        menu_cadastros.addAction(QAction("👤 Cadastrar Instrutor", self, triggered=self.abrir_cadastro_instrutor))
 
-        # Edicoes
         menu_edicoes = menubar.addMenu("Edições")
         menu_edicoes.addAction(QAction("✏️ Editar/Excluir Curso", self, triggered=self.abrir_editar_excluir_curso))
-        menu_edicoes.addAction(QAction("📝 Editar Instrutor", self, triggered=self.abrir_editar_instrutor))
+        menu_edicoes.addAction(QAction("✏️ Editar Instrutor", self, triggered=self.abrir_editar_instrutor))
         menu_edicoes.addAction(QAction("🗑️ Excluir Instrutor", self, triggered=self.abrir_excluir_instrutor))
 
-        # Historicos
         menu_historicos = menubar.addMenu("Históricos")
         menu_historicos.addAction(QAction("📋 Exibir Cursos", self, triggered=self.abrir_exibir_cursos))
-        menu_historicos.addAction(QAction("ℹ️ Exibir Informações dos Instrutores", self, triggered=self.abrir_exibir_instrutores))
-        menu_historicos.addAction(QAction("🕐 Ver Histórico", self, triggered=self.abrir_historico))
+        menu_historicos.addAction(QAction("📋 Exibir Informações dos Instrutores", self, triggered=self.abrir_exibir_instrutores))
+        menu_historicos.addAction(QAction("📅 Ver Histórico", self, triggered=self.abrir_historico))
 
-        # Configuracoes
+        menu_envios = menubar.addMenu("Envios")
+        menu_envios.addAction(QAction("📧 Enviar Emails", self, triggered=self.abrir_enviar_emails))
+
         menu_config = menubar.addMenu("Configurações")
         menu_config.addAction(QAction("⚙️ Configurar Email (SMTP)", self, triggered=self.abrir_config_email))
         menu_config.addAction(QAction("📊 Conversor de Planilhas", self, triggered=self.abrir_conversor_planilhas))
 
-        # =========================
-        # CONTEUDO PRINCIPAL
-        # =========================
         content_widget = QWidget()
         content_layout = QHBoxLayout()
         content_widget.setLayout(content_layout)
         content_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Calendario (lado esquerdo)
         calendar_container = QWidget()
         calendar_layout = QVBoxLayout()
         calendar_container.setLayout(calendar_layout)
@@ -3608,7 +3913,6 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(calendar_container, 1)
 
-        # Tabela (lado direito)
         table_container = QWidget()
         table_container.setObjectName("rightPanel")
         table_layout = QVBoxLayout()
@@ -3643,252 +3947,43 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(content_widget, 1)
 
-        # Inicialização
         self.selected_dates = set()
         self.programmed_dates = set()
         self.atualizar_calendario()
 
-        # Aplicar estilo CSS com cores originais
         self.setStyleSheet("""
-            /* ========== GERAL ========== */
-            QMainWindow {
-                background-color: #f5f5f5;
-            }
-
-            /* ========== MENU BAR ========== */
-            #appMenuBar {
-                background-color: #ffffff;
-                border-bottom: 1px solid #e0e0e0;
-            }
-
-            #appMenuBar::item {
-                color: #333333;
-                background-color: transparent;
-                padding: 8px 14px;
-                font-size: 13px;
-            }
-
-            #appMenuBar::item:selected {
-                background-color: #f0f4f8;
-                color: #4a90e2;
-            }
-
-            QMenu {
-                background-color: white;
-                border: 1px solid #d0d0d0;
-                border-radius: 2px;
-                padding: 4px;
-            }
-
-            QMenu::item {
-                padding: 8px 30px 8px 16px;
-                border-radius: 2px;
-                margin: 2px 4px;
-                font-size: 13px;
-                color: #333333;
-            }
-
-            QMenu::item:selected {
-                background-color: #f0f4f8;
-                color: #4a90e2;
-            }
-
-            QMenu::separator {
-                height: 1px;
-                background: #e0e0e0;
-                margin: 4px 8px;
-            }
-
-            #programarButton {
-                background-color: transparent;
-                color: #4a90e2;
-                border: 1px solid #4a90e2;
-                border-radius: 2px;
-                padding: 5px 12px;
-                font-size: 12px;
-                font-weight: normal;
-                min-height: 0;
-            }
-
-            #programarButton:hover {
-                background-color: #f0f7ff;
-            }
-
-            /* ========== PAINEL DIREITO ========== */
-            #rightPanel {
-                background-color: #ffffff;
-                padding: 20px;
-                margin: 10px;
-                border-radius: 4px;
-            }
-
-            /* ========== TITULOS E LABELS ========== */
-            #tableHeader {
-                color: #4a90e2;
-                font-size: 20px;
-                font-weight: bold;
-                padding: 10px 0;
-                margin-bottom: 10px;
-            }
-
-            #infoLabel {
-                color: #666;
-                font-size: 13px;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border-radius: 2px;
-                border-left: 4px solid #4a90e2;
-                margin-top: 10px;
-            }
-
-            /* ========== BOTOES ========== */
-            QPushButton {
-                background-color: transparent;
-                color: #4a90e2;
-                border: 1px solid #4a90e2;
-                border-radius: 2px;
-                padding: 5px 14px;
-                font-size: 12px;
-                font-weight: bold;
-                min-height: 22px;
-                min-width: 80px;
-            }
-
-            QPushButton:hover {
-                background-color: #f0f7ff;
-            }
-
-            QPushButton:pressed {
-                background-color: #d6e9f8;
-            }
-
-            /* ========== CALENDARIO ========== */
-            #calendar {
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 2px;
-                padding: 5px;
-            }
-
-            QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #4a90e2;
-                color: white;
-            }
-
-            QCalendarWidget QToolButton {
-                color: white;
-                background-color: transparent;
-                border-radius: 2px;
-                padding: 5px;
-            }
-
-            QCalendarWidget QToolButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-            }
-
-            QCalendarWidget QMenu {
-                background-color: white;
-                color: #333;
-            }
-
-            QCalendarWidget QSpinBox {
-                color: white;
-                background-color: transparent;
-                selection-background-color: rgba(255, 255, 255, 0.2);
-            }
-
-            QCalendarWidget QAbstractItemView {
-                background-color: white;
-                selection-background-color: #4a90e2;
-                selection-color: white;
-            }
-
-            /* ========== TABELA ========== */
-            QTableWidget {
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                gridline-color: #e8e8e8;
-                font-size: 12px;
-            }
-
-            QTableWidget::item {
-                padding: 4px 8px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-
-            QTableWidget::item:selected {
-                background-color: #4a90e2;
-                color: white;
-            }
-
-            QTableWidget::item:hover {
-                background-color: #f0f4f8;
-            }
-
-            QHeaderView::section {
-                background-color: #4a90e2;
-                color: white;
-                padding: 5px 8px;
-                font-size: 12px;
-                font-weight: bold;
-                border: none;
-                border-right: 1px solid #357abd;
-                border-bottom: 2px solid #357abd;
-            }
-
-            QHeaderView::section:first {
-                border-top-left-radius: 2px;
-            }
-
-            QHeaderView::section:last {
-                border-top-right-radius: 2px;
-                border-right: none;
-            }
-
-            /* ========== SEPARADOR ========== */
-            #separator {
-                color: #e0e0e0;
-                margin: 15px 0;
-            }
-
-            /* ========== INPUTS ========== */
-            QLineEdit, QTimeEdit, QComboBox {
-                background-color: white;
-                border: 1px solid #ccc;
-                border-radius: 2px;
-                padding: 6px;
-                font-size: 12px;
-                color: #333;
-            }
-
-            QLineEdit:focus, QTimeEdit:focus, QComboBox:focus {
-                border: 1px solid #4a90e2;
-            }
-
-            /* ========== MENU ========== */
-            QMenu {
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 2px;
-                padding: 5px;
-            }
-
-            QMenu::item {
-                padding: 8px 25px;
-                border-radius: 2px;
-                margin: 2px 5px;
-            }
-
-            QMenu::item:selected {
-                background-color: #4a90e2;
-                color: white;
-            }
-
-            QMenu::separator {
-                height: 1px;
-                background: #e0e0e0;
-                margin: 5px 10px;
-            }
+            QMainWindow { background-color: #f5f5f5; }
+            #appMenuBar { background-color: #ffffff; border-bottom: 1px solid #e0e0e0; }
+            #appMenuBar::item { color: #333333; background-color: transparent; padding: 8px 14px; font-size: 13px; }
+            #appMenuBar::item:selected { background-color: #f0f4f8; color: #4a90e2; }
+            QMenu { background-color: white; border: 1px solid #d0d0d0; border-radius: 2px; padding: 4px; }
+            QMenu::item { padding: 8px 30px 8px 16px; border-radius: 2px; margin: 2px 4px; font-size: 13px; color: #333333; }
+            QMenu::item:selected { background-color: #f0f4f8; color: #4a90e2; }
+            QMenu::separator { height: 1px; background: #e0e0e0; margin: 4px 8px; }
+            #programarButton { background-color: transparent; color: #4a90e2; border: 1px solid #4a90e2; border-radius: 2px; padding: 5px 12px; font-size: 12px; font-weight: normal; min-height: 0; }
+            #programarButton:hover { background-color: #f0f7ff; }
+            #rightPanel { background-color: #ffffff; padding: 20px; margin: 10px; border-radius: 4px; }
+            #tableHeader { color: #4a90e2; font-size: 20px; font-weight: bold; padding: 10px 0; margin-bottom: 10px; }
+            #infoLabel { color: #666; font-size: 13px; padding: 10px; background-color: #f8f9fa; border-radius: 2px; border-left: 4px solid #4a90e2; margin-top: 10px; }
+            QPushButton { background-color: transparent; color: #4a90e2; border: 1px solid #4a90e2; border-radius: 2px; padding: 5px 14px; font-size: 12px; font-weight: bold; min-height: 22px; min-width: 80px; }
+            QPushButton:hover { background-color: #f0f7ff; }
+            QPushButton:pressed { background-color: #d6e9f8; }
+            #calendar { background-color: white; border: 1px solid #e0e0e0; border-radius: 2px; padding: 5px; }
+            QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #4a90e2; color: white; }
+            QCalendarWidget QToolButton { color: white; background-color: transparent; border-radius: 2px; padding: 5px; }
+            QCalendarWidget QToolButton:hover { background-color: rgba(255, 255, 255, 0.2); }
+            QCalendarWidget QMenu { background-color: white; color: #333; }
+            QCalendarWidget QSpinBox { color: white; background-color: transparent; selection-background-color: rgba(255, 255, 255, 0.2); }
+            QCalendarWidget QAbstractItemView { background-color: white; selection-background-color: #4a90e2; selection-color: white; }
+            QTableWidget { background-color: white; border: 1px solid #e0e0e0; gridline-color: #e8e8e8; font-size: 12px; }
+            QTableWidget::item { padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
+            QTableWidget::item:selected { background-color: #4a90e2; color: white; }
+            QTableWidget::item:hover { background-color: #f0f4f8; }
+            QHeaderView::section { background-color: #4a90e2; color: white; padding: 5px 8px; font-size: 12px; font-weight: bold; border: none; border-right: 1px solid #357abd; border-bottom: 2px solid #357abd; }
+            QHeaderView::section:first { border-top-left-radius: 2px; }
+            QHeaderView::section:last { border-top-right-radius: 2px; border-right: none; }
+            QLineEdit, QTimeEdit, QComboBox { background-color: white; border: 1px solid #ccc; border-radius: 2px; padding: 6px; font-size: 12px; color: #333; }
+            QLineEdit:focus, QTimeEdit:focus, QComboBox:focus { border: 1px solid #4a90e2; }
         """)
 
     def _setup_auto_update_timer(self):
@@ -3914,66 +4009,52 @@ class MainWindow(QMainWindow):
     def update_calendar_visual(self):
         default_format = QTextCharFormat()
         self.calendar.setDateTextFormat(QDate(), default_format)
-
         programmed_format = QTextCharFormat()
         programmed_format.setBackground(QColor("lightgreen"))
-
         for date_str in self.programmed_dates:
             date = QDate.fromString(date_str, "yyyy-MM-dd")
             self.calendar.setDateTextFormat(date, programmed_format)
-
         selected_format = QTextCharFormat()
         selected_format.setBackground(QColor("lightblue"))
-
         for date_str in self.selected_dates:
             date = QDate.fromString(date_str, "yyyy-MM-dd")
             self.calendar.setDateTextFormat(date, selected_format)
 
     def atualizar_calendario(self):
         try:
-            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             cursor.execute("SELECT DISTINCT data FROM cursos_datas")
             datas = cursor.fetchall()
             conn.close()
-
             default_format = QTextCharFormat()
             self.calendar.setDateTextFormat(QDate(), default_format)
-
             future_format = QTextCharFormat()
             future_format.setBackground(QColor("lightgreen"))
-
             past_format = QTextCharFormat()
             past_format.setBackground(QColor("gray"))
-
             hoje = QDate.currentDate()
-
             for data in datas:
                 data_qdate = QDate.fromString(data[0], "yyyy-MM-dd")
                 if data_qdate < hoje:
                     self.calendar.setDateTextFormat(data_qdate, past_format)
                 else:
                     self.calendar.setDateTextFormat(data_qdate, future_format)
-
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao atualizar calendário: {str(e)}")
 
     def abrir_programacao_rapida(self):
         try:
             datas_selecionadas = set()
-
             dialog = QDialog(self)
             dialog.setWindowTitle("Programação Rápida de Curso")
             dialog.setGeometry(300, 300, 500, 600)
             dialog.setWindowIcon(QIcon("agenda.png"))
-
             layout = QVBoxLayout(dialog)
-
             layout.addWidget(QLabel("Selecione o Curso"))
             search_input = QLineEdit()
             search_input.setPlaceholderText("Pesquisar curso...")
             layout.addWidget(search_input)
-
             curso_combo = QComboBox()
             layout.addWidget(curso_combo)
             layout.addWidget(QLabel("Selecione o Instrutor"))
@@ -3985,8 +4066,7 @@ class MainWindow(QMainWindow):
                 curso_id = curso_combo.currentData()
                 if not curso_id:
                     return
-
-                conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT instrutores.id, instrutores.nome
@@ -3996,7 +4076,6 @@ class MainWindow(QMainWindow):
                     ORDER BY instrutores.nome ASC
                 """, (curso_id,))
                 instrutores = cursor.fetchall()
-
                 ultimo_instrutor_id = None
                 cursor.execute("""
                     SELECT instrutor_id FROM cursos_datas
@@ -4007,32 +4086,26 @@ class MainWindow(QMainWindow):
                 ultimo = cursor.fetchone()
                 if ultimo:
                     ultimo_instrutor_id = ultimo[0]
-
                 conn.close()
-
                 indice_sugerido = 0
                 for idx, (iid, nome) in enumerate(instrutores):
                     instrutor_combo.addItem(nome, iid)
                     if ultimo_instrutor_id and iid == ultimo_instrutor_id:
                         indice_sugerido = idx + 1
-
                 if instrutores:
                     if indice_sugerido >= len(instrutores):
                         indice_sugerido = 0
                     instrutor_combo.setCurrentIndex(indice_sugerido)
 
             curso_combo.currentIndexChanged.connect(carregar_instrutores_do_curso)
-
-            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             cursor.execute("SELECT id, nome FROM cursos ORDER BY nome ASC")
             cursos = cursor.fetchall()
             conn.close()
-
             if not cursos:
                 QMessageBox.warning(self, "Aviso", "Nenhum curso cadastrado!")
                 return
-
             cursos_originais = cursos
 
             def filtrar_cursos(texto):
@@ -4045,7 +4118,6 @@ class MainWindow(QMainWindow):
             search_input.textChanged.connect(filtrar_cursos)
             filtrar_cursos("")
             carregar_instrutores_do_curso()
-
             layout.addWidget(QLabel("Selecione as Datas"))
             calendario = QCalendarWidget()
             layout.addWidget(calendario)
@@ -4068,25 +4140,18 @@ class MainWindow(QMainWindow):
                     calendario.setDateTextFormat(date, highlight_format)
 
             calendario.clicked.connect(toggle_date)
-
             layout.addWidget(QLabel("Hora do Curso"))
             hora_input = QTimeEdit()
             hora_input.setDisplayFormat("HH:mm")
             layout.addWidget(hora_input)
-
             salvar_button = QPushButton("Salvar Programação")
             salvar_button.clicked.connect(lambda: self.salvar_programacao_rapida(
-                curso_combo.currentData(),
-                instrutor_combo.currentData(),
-                datas_selecionadas,
-                hora_input.time().toString("HH:mm"),
-                dialog
+                curso_combo.currentData(), instrutor_combo.currentData(),
+                datas_selecionadas, hora_input.time().toString("HH:mm"), dialog
             ))
             layout.addWidget(salvar_button)
-
             dialog.setLayout(layout)
             dialog.exec_()
-
         except Exception as e:
             QMessageBox.critical(self, "Erro Crítico", f"Erro ao abrir programação: {str(e)}")
 
@@ -4094,14 +4159,11 @@ class MainWindow(QMainWindow):
         if not curso_id or not datas:
             QMessageBox.warning(self, "Erro", "Selecione curso e pelo menos uma data.")
             return
-
         if not instrutor_id:
             QMessageBox.warning(self, "Erro", "Selecione o instrutor.")
             return
-
-        conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-
         try:
             cursor.execute("""
                 SELECT 1 FROM instrutores_cursos
@@ -4111,20 +4173,16 @@ class MainWindow(QMainWindow):
             if not cursor.fetchone():
                 QMessageBox.warning(self, "Erro", "Este instrutor não está associado ao curso selecionado.")
                 return
-
             for date_str in datas:
                 cursor.execute("""
                     INSERT INTO cursos_datas (curso_id, data, hora, instrutor_id)
                     VALUES (?, ?, ?, ?)
                 """, (curso_id, date_str, hora, instrutor_id))
-
             conn.commit()
             QMessageBox.information(self, "Sucesso", "Cursos programados com sucesso!")
-
             self.atualizar_calendario()
             datas.clear()
             dialog.accept()
-
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao programar cursos: {str(e)}")
         finally:
@@ -4135,14 +4193,11 @@ class MainWindow(QMainWindow):
             qdate = QDate.fromString(qdate, "yyyy-MM-dd")
             if not qdate.isValid():
                 return
-
         if not isinstance(qdate, QDate):
             return
-
         try:
             data = qdate.toString("yyyy-MM-dd")
-
-            conn = sqlite3.connect(r'\\srvsql\Banco Cursos\instrutores.db')
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT 
@@ -4159,27 +4214,20 @@ class MainWindow(QMainWindow):
             ''', (data,))
             cursos = cursor.fetchall()
             conn.close()
-
             self.tabela.setRowCount(0)
-
             for row, (curso_nome, instrutor_nome, hora, prog_id, curso_id) in enumerate(cursos):
                 self.tabela.insertRow(row)
-
                 curso_item = QTableWidgetItem(curso_nome)
                 curso_item.setFlags(curso_item.flags() & ~Qt.ItemIsEditable)
                 curso_item.setData(Qt.UserRole, prog_id)
                 curso_item.setData(Qt.UserRole + 1, curso_id)
-
                 instrutor_item = QTableWidgetItem(instrutor_nome)
                 instrutor_item.setFlags(instrutor_item.flags() & ~Qt.ItemIsEditable)
-
                 hora_item = QTableWidgetItem(hora)
                 hora_item.setFlags(hora_item.flags() & ~Qt.ItemIsEditable)
-
                 self.tabela.setItem(row, 0, curso_item)
                 self.tabela.setItem(row, 1, instrutor_item)
                 self.tabela.setItem(row, 2, hora_item)
-
             if self.tabela.rowCount() == 0:
                 self.tabela.insertRow(0)
                 item = QTableWidgetItem("Nenhum curso programado para esta data")
@@ -4187,19 +4235,16 @@ class MainWindow(QMainWindow):
                 item.setTextAlignment(Qt.AlignCenter)
                 self.tabela.setSpan(0, 0, 1, 3)
                 self.tabela.setItem(0, 0, item)
-
         except Exception as e:
             print(f"Erro ao atualizar tabela de cursos: {e}")
 
     def abrir_programar_curso(self, qdate):
         if not isinstance(qdate, QDate):
             return
-
         data = qdate.toString("yyyy-MM-dd")
         janela_programacao = ProgramarCursoWindow(data, self)
         janela_programacao.setModal(True)
         janela_programacao.exec_()
-
         self.atualizar_calendario()
         self.atualizar_tabela_cursos(self.calendar.selectedDate())
 
@@ -4217,46 +4262,11 @@ class MainWindow(QMainWindow):
             self.atualizar_calendario()
             self.atualizar_tabela_cursos(self.calendar.selectedDate())
 
-    def criar_menu_acoes(self):
-        menu = QMenu()
-        menu.addAction(QAction(QIcon("conectar.png"), "Associar Cursos a Instrutor", self,
-                               triggered=self.abrir_associar_curso))
-        menu.addAction(QAction(QIcon("cadastre-se.png"), "Cadastrar Curso", self,
-                               triggered=self.abrir_cadastro_curso))
-        menu.addAction(QAction(QIcon("cadastre-se.png"), "Cadastrar Temas e Subtemas", self,
-                               triggered=self.abrir_cadastrar_temas_subtemas))
-        menu.addAction(QAction(QIcon("cadastre-se.png"), "Cadastrar Instrutor", self,
-                               triggered=self.abrir_cadastro_instrutor))
-        menu.addAction(QAction(QIcon("editar.png"), "Editar/Excluir Curso", self,
-                               triggered=self.abrir_editar_excluir_curso))
-        menu.addAction(QAction(QIcon("editar.png"), "Editar Instrutor", self,
-                               triggered=self.abrir_editar_instrutor))
-        menu.addAction(QAction(QIcon("excluir.png"), "Excluir Instrutor", self,
-                               triggered=self.abrir_excluir_instrutor))
-        menu.addAction(QAction(QIcon("informacoes.png"), "Exibir Cursos (Tema e Descrição)", self,
-                               triggered=self.abrir_exibir_cursos))
-        menu.addAction(QAction(QIcon("informacoes.png"), "Exibir Informações dos Instrutores", self,
-                               triggered=self.abrir_exibir_instrutores))
-        menu.addAction(QAction(QIcon("historico.png"), "Ver Histórico", self,
-                               triggered=self.abrir_historico))
-        menu.addSeparator()
-        menu.addAction(QAction(QIcon("conectar.png"), "Configurar Email (SMTP)", self,
-                               triggered=self.abrir_config_email))
-        menu.addAction(QAction(QIcon("curso.png"), "Conversor de Planilhas", self,
-                               triggered=self.abrir_conversor_planilhas))
-        return menu
-
     def abrir_cadastro_instrutor(self):
         CadastroInstrutorWindow(self).exec_()
 
     def abrir_cadastro_curso(self):
         CadastroCursoWindow(self).exec_()
-
-    def abrir_cadastrar_temas_subtemas(self):
-        CadastrarTemasSubtemasWindow(self).exec_()
-
-    def abrir_associar_curso(self):
-        AssociarCursoWindow(self).exec_()
 
     def abrir_editar_instrutor(self):
         EditarInstrutorWindow(self).exec_()
@@ -4276,6 +4286,9 @@ class MainWindow(QMainWindow):
     def abrir_exibir_cursos(self):
         ExibirCursosWindow(self).exec_()
 
+    def abrir_enviar_emails(self):
+        EnviarEmailsWindow(self).exec_()
+
     def abrir_config_email(self):
         ConfigEmailWindow(self).exec_()
 
@@ -4283,7 +4296,6 @@ class MainWindow(QMainWindow):
         ConversorPlanilhasWindow(self).exec_()
 
 
-# Janela de Configuração de Email (SMTP)
 class ConfigEmailWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)

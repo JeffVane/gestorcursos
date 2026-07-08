@@ -71,7 +71,7 @@ base = "gui" if sys.platform == "win32" else None
 
 setup(
     name="GerenciamentoCursos",
-    version="1.2.2",
+    version="1.2.3",
     description="Sistema de Gerenciamento de Cursos e Instrutores",
     options={"build_exe": build_exe_options},
     executables=[
